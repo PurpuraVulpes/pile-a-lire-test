@@ -236,7 +236,22 @@ body.no-animations .book-card,body.no-animations .saga-card,body.no-animations .
 .btn-danger{background:rgba(245,87,108,.15);color:#f5576c;border:1px solid rgba(245,87,108,.3)}.btn-danger:hover{background:rgba(245,87,108,.3)}
 .about-card{background:rgba(255,255,255,.03);border-radius:12px;padding:20px;line-height:1.8}.about-card p{color:#bbb}.about-small{font-size:.8rem;color:#777!important;margin-top:10px}
 
-.nav-btn,.btn,.filter-btn,.stat-label,.status-badge,.genre-tag,.tome-tag,.saga-tag,.format-tag,.priority-tag,.price-tag,.toast,.input-hint,.source-tag,.want-buy-badge{font-family:'Poppins',sans-serif!important}
+/* AUTH / SYNC */
+.auth-tabs{display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:15px}
+.auth-tab{flex:1;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:#ccc;font-family:'Poppins',sans-serif;cursor:pointer;transition:all .3s}
+.auth-tab:hover{background:rgba(255,255,255,.1)}
+.auth-tab.active{background:linear-gradient(135deg,var(--accent-1),var(--accent-2));color:#fff;border-color:transparent}
+.auth-form{display:none}.auth-form.active{display:block}
+.user-info{display:flex;align-items:center;gap:15px;padding:20px;background:rgba(255,255,255,.05);border-radius:15px;margin-bottom:20px}
+.user-avatar{font-size:2.5rem;width:60px;height:60px;background:linear-gradient(135deg,var(--accent-1),var(--accent-2));border-radius:50%;display:flex;align-items:center;justify-content:center}
+.user-email{font-weight:600;color:#fff;font-size:1.05rem;margin:0}
+.user-status{color:var(--success-1);font-size:.85rem;margin-top:4px}
+.user-status.syncing{color:#ffb74d}
+.user-status.error{color:#ef5350}
+.sync-actions{display:flex;flex-direction:column;gap:10px}
+.sync-actions .btn{justify-content:center}
+
+.nav-btn,.btn,.filter-btn,.stat-label,.status-badge,.genre-tag,.tome-tag,.saga-tag,.format-tag,.priority-tag,.price-tag,.toast,.input-hint,.source-tag,.want-buy-badge,.auth-tab{font-family:'Poppins',sans-serif!important}
 
 .empty-state{text-align:center;padding:50px 20px;color:#aaa;grid-column:1/-1}.empty-state .emoji{font-size:4rem;display:block;margin-bottom:15px}
 footer{text-align:center;padding:30px;color:#666;font-size:.85rem;position:relative;z-index:1}
@@ -251,4 +266,5 @@ footer{text-align:center;padding:30px;color:#666;font-size:.85rem;position:relat
     .theme-grid,.font-grid{grid-template-columns:repeat(3,1fr)}.data-actions{flex-direction:column}.data-actions .btn{width:100%;justify-content:center}
     .main-nav{gap:3px;padding:8px 5px}.nav-btn{padding:7px 10px;font-size:.7rem}.sort-bar{flex-direction:column;align-items:flex-start}
     .auto-saga-info{padding:0 15px}.info-banner{flex-direction:column;text-align:center}
+    .user-info{flex-direction:column;text-align:center}
 }
