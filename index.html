@@ -153,7 +153,7 @@
         <section class="books-list" id="booksList"></section>
     </div>
 
-    <!-- ==================== PAGE EXTERNAL (Empruntés / Lus ailleurs) ==================== -->
+    <!-- PAGE EXTERNAL -->
     <div class="page" id="page-external">
         <header>
             <div class="logo">📖</div>
@@ -173,7 +173,7 @@
                 <span class="info-icon">💡</span>
                 <div>
                     <strong>Livres externes à ta collection</strong>
-                    <p>Ces livres sont comptés dans tes stats de lecture mais ne sont pas dans ta bibliothèque perso ni dans les sagas. Coche "je veux l'acheter" pour l'ajouter automatiquement à ta wishlist !</p>
+                    <p>Comptés dans tes stats de lecture mais pas dans ta bibliothèque perso ni dans les sagas. Coche "je veux l'acheter" pour l'ajouter à la wishlist !</p>
                 </div>
             </div>
         </section>
@@ -250,7 +250,7 @@
                 <div class="form-row">
                     <div class="input-group" style="flex:1 1 100%">
                         <label for="extNotes">Notes (optionnel)</label>
-                        <input type="text" id="extNotes" placeholder="Ex : Prêté par Alice, à rendre en juin...">
+                        <input type="text" id="extNotes" placeholder="Ex : Prêté par Alice...">
                     </div>
                 </div>
                 <div class="form-row">
@@ -312,7 +312,7 @@
                 <span class="info-icon">💡</span>
                 <div>
                     <strong>Les sagas se créent automatiquement !</strong>
-                    <p>Uniquement les livres de ta bibliothèque perso sont regroupés ici. Les livres empruntés/lus ailleurs ne sont pas comptés.</p>
+                    <p>Uniquement les livres de ta bibliothèque perso sont regroupés ici.</p>
                 </div>
             </div>
         </section>
@@ -451,6 +451,62 @@
             <p class="subtitle">Personnalise ton expérience</p>
         </header>
 
+        <!-- SYNCHRONISATION CLOUD -->
+        <section class="settings-section" id="syncSection">
+            <h2>☁️ Synchronisation Cloud</h2>
+            <p class="settings-desc">Synchronise tes données entre tous tes appareils.</p>
+
+            <div id="authNotLogged">
+                <div class="auth-tabs">
+                    <button class="auth-tab active" onclick="showAuthTab('login', this)">🔑 Connexion</button>
+                    <button class="auth-tab" onclick="showAuthTab('register', this)">📝 Inscription</button>
+                </div>
+
+                <div class="auth-form active" id="loginForm">
+                    <div class="input-group">
+                        <label for="loginEmail">Email</label>
+                        <input type="email" id="loginEmail" placeholder="ton@email.com">
+                    </div>
+                    <div class="input-group">
+                        <label for="loginPassword">Mot de passe</label>
+                        <input type="password" id="loginPassword" placeholder="••••••••">
+                    </div>
+                    <button class="btn btn-add" onclick="firebaseLogin()">🔑 Se connecter</button>
+                </div>
+
+                <div class="auth-form" id="registerForm">
+                    <div class="input-group">
+                        <label for="regEmail">Email</label>
+                        <input type="email" id="regEmail" placeholder="ton@email.com">
+                    </div>
+                    <div class="input-group">
+                        <label for="regPassword">Mot de passe (min. 6 caractères)</label>
+                        <input type="password" id="regPassword" placeholder="••••••••">
+                    </div>
+                    <div class="input-group">
+                        <label for="regPassword2">Confirmer le mot de passe</label>
+                        <input type="password" id="regPassword2" placeholder="••••••••">
+                    </div>
+                    <button class="btn btn-add" onclick="firebaseRegister()">📝 Créer un compte</button>
+                </div>
+            </div>
+
+            <div id="authLogged" style="display:none">
+                <div class="user-info">
+                    <div class="user-avatar">👤</div>
+                    <div>
+                        <p class="user-email" id="userEmail">-</p>
+                        <p class="user-status" id="syncStatus">☁️ Synchronisé</p>
+                    </div>
+                </div>
+                <div class="sync-actions">
+                    <button class="btn btn-export" onclick="firebaseSync()">🔄 Synchroniser maintenant</button>
+                    <button class="btn btn-import" onclick="firebasePullData()">⬇️ Récupérer les données du cloud</button>
+                    <button class="btn btn-danger" onclick="firebaseLogout()">🚪 Se déconnecter</button>
+                </div>
+            </div>
+        </section>
+
         <section class="settings-section">
             <h2>🎨 Thème de couleurs</h2>
             <p class="settings-desc">Choisis l'ambiance qui te plaît.</p>
@@ -498,9 +554,9 @@
         </section>
 
         <section class="settings-section">
-            <h2>💾 Données</h2>
+            <h2>💾 Données locales</h2>
             <div class="data-actions">
-                <button class="btn btn-export" onclick="exportData()">📤 Exporter</button>
+                <button class="btn btn-export" onclick="exportData()">📤 Exporter (JSON)</button>
                 <button class="btn btn-import" onclick="document.getElementById('importFile').click()">📥 Importer</button>
                 <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
                 <button class="btn btn-danger" onclick="clearAllData()">🗑️ Tout supprimer</button>
@@ -510,14 +566,14 @@
         <section class="settings-section">
             <h2>ℹ️ À propos</h2>
             <div class="about-card">
-                <p><strong>📚 Ma Pile à Livres</strong> — Version 8.0</p>
-                <p>Bibliothèque, empruntés, sagas, auteurs, wishlist, thèmes, polices</p>
-                <p class="about-small">Données sauvegardées dans le navigateur (localStorage)</p>
+                <p><strong>📚 Ma Pile à Livres</strong> — Version 9.0</p>
+                <p>Bibliothèque, empruntés, sagas, auteurs, wishlist, thèmes, sync cloud</p>
+                <p class="about-small">Données sauvegardées localement + cloud (Firebase)</p>
             </div>
         </section>
     </div>
 
-    <!-- MODAL NOTATION -->
+    <!-- MODALES -->
     <div class="modal-overlay" id="ratingModal">
         <div class="modal">
             <button class="modal-close" onclick="closeRatingModal()">✕</button>
@@ -535,7 +591,6 @@
         </div>
     </div>
 
-    <!-- MODAL NOTATION EXT -->
     <div class="modal-overlay" id="ratingExtModal">
         <div class="modal">
             <button class="modal-close" onclick="closeRatingExtModal()">✕</button>
@@ -553,7 +608,6 @@
         </div>
     </div>
 
-    <!-- MODAL TRANSFERT -->
     <div class="modal-overlay" id="transferModal">
         <div class="modal">
             <button class="modal-close" onclick="closeTransferModal()">✕</button>
@@ -565,7 +619,6 @@
         </div>
     </div>
 
-    <!-- MODAL EDIT SAGA -->
     <div class="modal-overlay" id="editSagaModal">
         <div class="modal">
             <button class="modal-close" onclick="closeEditSagaModal()">✕</button>
@@ -579,7 +632,41 @@
         </div>
     </div>
 
-    <footer><p>📚 Ma Pile à Livres v8.0 — Fait avec ❤️ — 2025</p></footer>
+    <footer><p>📚 Ma Pile à Livres v9.0 — Fait avec ❤️ — 2025</p></footer>
+
+    <!-- ========== FIREBASE ========== -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+        // ⚠️ REMPLACE PAR TA CONFIG FIREBASE
+        const firebaseConfig = {
+            apiKey: "AIzaSyCEJvY_9h3JAqZI5wHJd0SSUrEKfu9Ch7M",
+            authDomain: "pile-a-lire-ec70b.firebaseapp.com",
+            projectId: pile-a-lire-ec70b",
+            storageBucket: "pile-a-lire-ec70b.firebasestorage.app",
+            messagingSenderId: "283870126026",
+            appId: "1:283870126026:web:d18c5a0e56843bb5a03933"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        window.firebaseAuth = auth;
+        window.firebaseDb = db;
+        window.firebaseCreateUser = createUserWithEmailAndPassword;
+        window.firebaseSignIn = signInWithEmailAndPassword;
+        window.firebaseSignOut = signOut;
+        window.firebaseOnAuthChanged = onAuthStateChanged;
+        window.firebaseDoc = doc;
+        window.firebaseSetDoc = setDoc;
+        window.firebaseGetDoc = getDoc;
+
+        document.dispatchEvent(new Event('firebaseReady'));
+    </script>
+
     <script src="script.js"></script>
 </body>
 </html>
