@@ -20,8 +20,6 @@ var ratingExtBookId = null;
 var selectedExtRating = 0;
 var transferBookId = null;
 var editSagaKey = null;
-
-// Firebase
 var currentUser = null;
 var syncTimeout = null;
 
@@ -38,29 +36,18 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function renderAll() {
-    renderBooks();
-    renderExternal();
-    renderSagas();
-    renderAuthors();
-    renderWishlist();
-    updateStats();
-    updateRandomGenreFilter();
-    updateSeriesSuggestions();
-    updateWishSeriesSuggestions();
+    renderBooks(); renderExternal(); renderSagas(); renderAuthors(); renderWishlist();
+    updateStats(); updateRandomGenreFilter(); updateSeriesSuggestions(); updateWishSeriesSuggestions();
 }
 
-// ============================================================
-//  SAVE (avec auto-sync Firebase)
-// ============================================================
+// SAVE
 function saveBooks() { localStorage.setItem('myBookPile', JSON.stringify(books)); triggerAutoSync(); }
 function saveWishlist() { localStorage.setItem('myBookWishlist', JSON.stringify(wishlist)); triggerAutoSync(); }
 function saveExternal() { localStorage.setItem('myBookExternal', JSON.stringify(external)); triggerAutoSync(); }
 function saveSagasMeta() { localStorage.setItem('myBookSagasMeta', JSON.stringify(sagasMeta)); triggerAutoSync(); }
 function saveSettings() { localStorage.setItem('myBookPileSettings', JSON.stringify(settings)); }
 
-// ============================================================
-//  SETTINGS
-// ============================================================
+// SETTINGS
 function applySettings() {
     document.documentElement.setAttribute('data-theme', settings.theme);
     document.documentElement.style.setProperty('--main-font', settings.font || 'Poppins');
@@ -130,9 +117,7 @@ function toggleAnimationsF() {
     saveSettings();
 }
 
-// ============================================================
-//  EXPORT / IMPORT
-// ============================================================
+// EXPORT / IMPORT
 function exportData() {
     var data = { books: books, wishlist: wishlist, external: external, sagasMeta: sagasMeta, settings: settings };
     var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -158,9 +143,7 @@ function importData(event) {
             renderAll();
             triggerAutoSync();
             showToast('📥 Importé !');
-        } catch (err) {
-            showToast('❌ Fichier invalide !');
-        }
+        } catch (err) { showToast('❌ Fichier invalide !'); }
     };
     reader.readAsText(file);
     event.target.value = '';
@@ -179,9 +162,6 @@ function clearAllData() {
     }
 }
 
-// ============================================================
-//  PARTICULES
-// ============================================================
 function createParticles() {
     var c = document.getElementById('particles');
     if (!c) return;
@@ -198,9 +178,6 @@ function createParticles() {
     }
 }
 
-// ============================================================
-//  SÉRIES HELPERS
-// ============================================================
 function getSeriesKey(name) { return name.trim().toLowerCase(); }
 
 function getAllSeries() {
@@ -293,9 +270,6 @@ function getFormatHtml(format) {
 
 var SOURCE_ICONS = { 'Bibliothèque': '🏛️', 'Internet': '💻', 'Ami': '👥', 'École': '🎓', 'Autre': '📦' };
 
-// ============================================================
-//  BIBLIOTHÈQUE
-// ============================================================
 function addBook(e) {
     e.preventDefault();
     var title = document.getElementById('bookTitle').value.trim();
@@ -470,9 +444,6 @@ function confirmRating() {
     closeRatingModal();
 }
 
-// ============================================================
-//  RANDOM
-// ============================================================
 function pickRandomBook() {
     var gf = document.getElementById('randomGenreFilter').value;
     var cands = [];
@@ -510,9 +481,6 @@ function updateRandomGenreFilter() {
     for (var j = 0; j < genres.length; j++) s.innerHTML += '<option value="' + genres[j] + '">' + genres[j] + '</option>';
 }
 
-// ============================================================
-//  EXTERNAL
-// ============================================================
 function addExternal(e) {
     e.preventDefault();
     var title = document.getElementById('extTitle').value.trim();
@@ -767,9 +735,6 @@ function confirmExtRating() {
     closeRatingExtModal();
 }
 
-// ============================================================
-//  SAGAS
-// ============================================================
 function renderSagas() {
     var container = document.getElementById('sagasList');
     if (!container) return;
@@ -887,9 +852,6 @@ function confirmEditSaga() {
     closeEditSagaModal();
 }
 
-// ============================================================
-//  AUTEURS
-// ============================================================
 function renderAuthors() {
     var container = document.getElementById('authorsList');
     if (!container) return;
@@ -1011,9 +973,6 @@ function toggleAuthorBooks(uid, btn) {
     btn.textContent = exp ? '📚 Masquer' : '📚 Voir les livres';
 }
 
-// ============================================================
-//  WISHLIST
-// ============================================================
 function addWishlistItem(e) {
     e.preventDefault();
     var title = document.getElementById('wishTitle').value.trim();
@@ -1181,9 +1140,6 @@ function confirmTransfer() {
     closeTransferModal();
 }
 
-// ============================================================
-//  STATS
-// ============================================================
 function updateStats() {
     document.getElementById('totalBooks').textContent = books.length;
     var toRead = 0, read = 0, rSum = 0, rCount = 0;
@@ -1217,9 +1173,6 @@ function updateStats() {
     document.getElementById('wishlistSpent').textContent = spent.toFixed(2) + ' €';
 }
 
-// ============================================================
-//  TOAST
-// ============================================================
 function showToast(msg) {
     var ex = document.querySelector('.toast');
     if (ex) ex.remove();
@@ -1230,9 +1183,7 @@ function showToast(msg) {
     setTimeout(function () { if (t.parentNode) t.remove(); }, 3000);
 }
 
-// ============================================================
-//  FIREBASE - AUTH & SYNC
-// ============================================================
+// FIREBASE
 document.addEventListener('firebaseReady', function () {
     var auth = window.firebaseAuth;
     window.firebaseOnAuthChanged(auth, function (user) {
@@ -1274,12 +1225,8 @@ function firebaseRegister() {
     if (!email || !pass) { showToast('⚠️ Remplis tous les champs !'); return; }
     if (pass.length < 6) { showToast('⚠️ Mot de passe : min. 6 caractères'); return; }
     if (pass !== pass2) { showToast('⚠️ Les mots de passe ne correspondent pas !'); return; }
-
     window.firebaseCreateUser(window.firebaseAuth, email, pass)
-        .then(function () {
-            showToast('✅ Compte créé ! Envoi des données...');
-            setTimeout(firebaseSync, 1000);
-        })
+        .then(function () { showToast('✅ Compte créé !'); setTimeout(firebaseSync, 1000); })
         .catch(function (error) {
             var msg = '❌ Erreur';
             if (error.code === 'auth/email-already-in-use') msg = '⚠️ Email déjà utilisé';
@@ -1293,11 +1240,8 @@ function firebaseLogin() {
     var email = document.getElementById('loginEmail').value.trim();
     var pass = document.getElementById('loginPassword').value;
     if (!email || !pass) { showToast('⚠️ Remplis tous les champs !'); return; }
-
     window.firebaseSignIn(window.firebaseAuth, email, pass)
-        .then(function () {
-            showToast('✅ Connecté ! Récupération...');
-        })
+        .then(function () { showToast('✅ Connecté !'); })
         .catch(function (error) {
             var msg = '❌ Erreur';
             if (error.code === 'auth/user-not-found') msg = '⚠️ Utilisateur introuvable';
@@ -1309,37 +1253,26 @@ function firebaseLogin() {
 }
 
 function firebaseLogout() {
-    if (!confirm('Se déconnecter ? Tes données restent sauvegardées localement.')) return;
-    window.firebaseSignOut(window.firebaseAuth)
-        .then(function () { showToast('👋 Déconnecté !'); });
+    if (!confirm('Se déconnecter ?')) return;
+    window.firebaseSignOut(window.firebaseAuth).then(function () { showToast('👋 Déconnecté !'); });
 }
 
 function firebaseSync() {
     if (!currentUser) { showToast('⚠️ Non connecté !'); return; }
     setSyncStatus('syncing', '⏳ Synchronisation...');
-
-    var data = {
-        books: books, wishlist: wishlist, external: external,
-        sagasMeta: sagasMeta, settings: settings, lastSync: Date.now()
-    };
-
+    var data = { books: books, wishlist: wishlist, external: external, sagasMeta: sagasMeta, settings: settings, lastSync: Date.now() };
     var docRef = window.firebaseDoc(window.firebaseDb, 'users', currentUser.uid);
     window.firebaseSetDoc(docRef, data)
         .then(function () {
             setSyncStatus('ok', '☁️ Synchronisé ' + new Date().toLocaleTimeString('fr-FR'));
             showToast('☁️ Synchronisé !');
         })
-        .catch(function (err) {
-            setSyncStatus('error', '❌ Erreur');
-            showToast('❌ Erreur de sync');
-            console.error(err);
-        });
+        .catch(function (err) { setSyncStatus('error', '❌ Erreur'); showToast('❌ Erreur sync'); console.error(err); });
 }
 
 function firebasePullData() {
     if (!currentUser) return;
     setSyncStatus('syncing', '⏳ Récupération...');
-
     var docRef = window.firebaseDoc(window.firebaseDb, 'users', currentUser.uid);
     window.firebaseGetDoc(docRef)
         .then(function (docSnap) {
@@ -1347,42 +1280,30 @@ function firebasePullData() {
                 var data = docSnap.data();
                 var localLastSync = parseInt(localStorage.getItem('lastLocalChange') || '0');
                 var cloudLastSync = data.lastSync || 0;
-
                 if (localLastSync > cloudLastSync && (books.length > 0 || wishlist.length > 0 || external.length > 0)) {
-                    if (confirm('⚠️ Données locales plus récentes.\n\nRemplacer le cloud par tes données locales ?\n\n(OK = local vers cloud / Annuler = cloud vers local)')) {
-                        firebaseSync();
-                        return;
+                    if (confirm('⚠️ Données locales plus récentes.\n\nOK = envoyer local vers cloud / Annuler = récupérer cloud')) {
+                        firebaseSync(); return;
                     }
                 }
-
                 if (data.books) books = data.books;
                 if (data.wishlist) wishlist = data.wishlist;
                 if (data.external) external = data.external;
                 if (data.sagasMeta) sagasMeta = data.sagasMeta;
-                if (data.settings) {
-                    settings = Object.assign({}, settings, data.settings);
-                    applySettings();
-                }
-
+                if (data.settings) { settings = Object.assign({}, settings, data.settings); applySettings(); }
                 localStorage.setItem('myBookPile', JSON.stringify(books));
                 localStorage.setItem('myBookWishlist', JSON.stringify(wishlist));
                 localStorage.setItem('myBookExternal', JSON.stringify(external));
                 localStorage.setItem('myBookSagasMeta', JSON.stringify(sagasMeta));
                 saveSettings();
-
                 renderAll();
-                setSyncStatus('ok', '☁️ Récupéré ' + new Date().toLocaleTimeString('fr-FR'));
-                showToast('⬇️ Données récupérées !');
+                setSyncStatus('ok', '☁️ Récupéré');
+                showToast('⬇️ Récupéré !');
             } else {
                 setSyncStatus('ok', '☁️ Premier envoi...');
                 firebaseSync();
             }
         })
-        .catch(function (err) {
-            setSyncStatus('error', '❌ Erreur');
-            showToast('❌ Erreur récupération');
-            console.error(err);
-        });
+        .catch(function (err) { setSyncStatus('error', '❌ Erreur'); console.error(err); });
 }
 
 function setSyncStatus(status, msg) {
@@ -1398,7 +1319,5 @@ function triggerAutoSync() {
     localStorage.setItem('lastLocalChange', Date.now().toString());
     if (!currentUser) return;
     if (syncTimeout) clearTimeout(syncTimeout);
-    syncTimeout = setTimeout(function () {
-        firebaseSync();
-    }, 3000);
+    syncTimeout = setTimeout(function () { firebaseSync(); }, 3000);
 }
