@@ -21,6 +21,10 @@ var selectedExtRating = 0;
 var transferBookId = null;
 var editSagaKey = null;
 
+// Firebase
+var currentUser = null;
+var syncTimeout = null;
+
 // ============================================================
 //  INIT
 // ============================================================
@@ -46,12 +50,12 @@ function renderAll() {
 }
 
 // ============================================================
-//  SAVE
+//  SAVE (avec auto-sync Firebase)
 // ============================================================
-function saveBooks() { localStorage.setItem('myBookPile', JSON.stringify(books)); }
-function saveWishlist() { localStorage.setItem('myBookWishlist', JSON.stringify(wishlist)); }
-function saveExternal() { localStorage.setItem('myBookExternal', JSON.stringify(external)); }
-function saveSagasMeta() { localStorage.setItem('myBookSagasMeta', JSON.stringify(sagasMeta)); }
+function saveBooks() { localStorage.setItem('myBookPile', JSON.stringify(books)); triggerAutoSync(); }
+function saveWishlist() { localStorage.setItem('myBookWishlist', JSON.stringify(wishlist)); triggerAutoSync(); }
+function saveExternal() { localStorage.setItem('myBookExternal', JSON.stringify(external)); triggerAutoSync(); }
+function saveSagasMeta() { localStorage.setItem('myBookSagasMeta', JSON.stringify(sagasMeta)); triggerAutoSync(); }
 function saveSettings() { localStorage.setItem('myBookPileSettings', JSON.stringify(settings)); }
 
 // ============================================================
@@ -146,12 +150,13 @@ function importData(event) {
     reader.onload = function (e) {
         try {
             var data = JSON.parse(e.target.result);
-            if (data.books) { books = data.books; saveBooks(); }
-            if (data.wishlist) { wishlist = data.wishlist; saveWishlist(); }
-            if (data.external) { external = data.external; saveExternal(); }
-            if (data.sagasMeta) { sagasMeta = data.sagasMeta; saveSagasMeta(); }
+            if (data.books) { books = data.books; localStorage.setItem('myBookPile', JSON.stringify(books)); }
+            if (data.wishlist) { wishlist = data.wishlist; localStorage.setItem('myBookWishlist', JSON.stringify(wishlist)); }
+            if (data.external) { external = data.external; localStorage.setItem('myBookExternal', JSON.stringify(external)); }
+            if (data.sagasMeta) { sagasMeta = data.sagasMeta; localStorage.setItem('myBookSagasMeta', JSON.stringify(sagasMeta)); }
             if (data.settings) { settings = Object.assign({}, settings, data.settings); saveSettings(); applySettings(); }
             renderAll();
+            triggerAutoSync();
             showToast('📥 Importé !');
         } catch (err) {
             showToast('❌ Fichier invalide !');
@@ -164,8 +169,12 @@ function importData(event) {
 function clearAllData() {
     if (confirm('⚠️ Tout supprimer ? Irréversible.')) {
         books = []; wishlist = []; external = []; sagasMeta = {};
-        saveBooks(); saveWishlist(); saveExternal(); saveSagasMeta();
+        localStorage.setItem('myBookPile', '[]');
+        localStorage.setItem('myBookWishlist', '[]');
+        localStorage.setItem('myBookExternal', '[]');
+        localStorage.setItem('myBookSagasMeta', '{}');
         renderAll();
+        triggerAutoSync();
         showToast('🗑️ Tout supprimé.');
     }
 }
@@ -273,9 +282,6 @@ function updateWishSeriesSuggestions() {
     }
 }
 
-// ============================================================
-//  FORMAT HELPER
-// ============================================================
 var FORMAT_ICONS = { 'Broché': '📕', 'Poche': '📒', 'Collector': '✨', 'Relié': '📗', 'Numérique': '📱', 'Audio': '🎧', 'Autre': '📦' };
 
 function getFormatHtml(format) {
@@ -397,7 +403,7 @@ function markAsRead(id) {
         if (books[i].id === id) {
             books[i].status = 'read'; books[i].dateRead = new Date().toLocaleDateString('fr-FR');
             saveBooks(); renderAll();
-            showToast('✅ "' + books[i].title + '" lu !');
+            showToast('✅ Lu !');
             var bid = id;
             setTimeout(function () { openRatingModal(bid); }, 400);
             return;
@@ -432,7 +438,6 @@ function deleteBook(id) {
     }
 }
 
-// RATING BIBLIO
 function openRatingModal(id) {
     ratingBookId = id; selectedRating = 0;
     var b = null;
@@ -506,7 +511,7 @@ function updateRandomGenreFilter() {
 }
 
 // ============================================================
-//  EXTERNAL (Livres empruntés/lus ailleurs)
+//  EXTERNAL
 // ============================================================
 function addExternal(e) {
     e.preventDefault();
@@ -529,7 +534,6 @@ function addExternal(e) {
         dateAdded: new Date().toLocaleDateString('fr-FR')
     });
 
-    // Ajouter automatiquement à la wishlist si "je veux l'acheter"
     if (wantToBuy) {
         var exists = false;
         for (var i = 0; i < wishlist.length; i++) {
@@ -540,7 +544,8 @@ function addExternal(e) {
         if (!exists) {
             wishlist.push({
                 id: Date.now() + 1, title: title, author: author, genre: genre,
-                format: 'Broché', price: 0, priority: 2, notes: notes ? ('Vient de "empruntés" : ' + notes) : 'Vient de "empruntés"',
+                format: 'Broché', price: 0, priority: 2,
+                notes: notes ? ('Vient de "empruntés" : ' + notes) : 'Vient de "empruntés"',
                 series: series || null, tome: tome, status: 'toBuy',
                 dateAdded: new Date().toLocaleDateString('fr-FR'), dateBought: null,
                 fromExternal: extId
@@ -551,11 +556,8 @@ function addExternal(e) {
 
     saveExternal(); renderAll();
     document.getElementById('addExtForm').reset();
-    if (wantToBuy) {
-        showToast('📖 "' + title + '" ajouté + 🛒 wishlist !');
-    } else {
-        showToast('📖 "' + title + '" ajouté !');
-    }
+    if (wantToBuy) showToast('📖 "' + title + '" ajouté + 🛒 wishlist !');
+    else showToast('📖 "' + title + '" ajouté !');
 }
 
 function renderExternal() {
@@ -592,7 +594,6 @@ function renderExternal() {
         }
     });
 
-    // Stats
     var readCount = 0, ratedSum = 0, ratedCount = 0, toBuyCount = 0;
     for (var s = 0; s < external.length; s++) {
         if (external[s].status === 'read') readCount++;
@@ -631,8 +632,7 @@ function renderExternal() {
             '<span class="genre-tag">' + it.genre + '</span>' +
             '<span class="status-badge ' + sc + '">' + statusLabels[it.status] + '</span>' +
             sourceH + tomeH + seriesH + wantH +
-            '</div>' +
-            starsH + reviewH +
+            '</div>' + starsH + reviewH +
             (it.notes ? '<p class="wish-notes">📝 ' + it.notes + '</p>' : '') +
             '<div class="actions">' +
             (it.status !== 'read' ? '<button class="btn-mark-read" onclick="markExtAsRead(' + it.id + ')">✅ Lu</button>' : '<button class="btn-unread" onclick="markExtAsUnread(' + it.id + ')">📖 Pas lu</button>') +
@@ -692,7 +692,6 @@ function toggleExtWantBuy(id) {
         if (external[i].id === id) {
             external[i].wantToBuy = !external[i].wantToBuy;
             if (external[i].wantToBuy) {
-                // Ajouter à la wishlist
                 var it = external[i];
                 var exists = false;
                 for (var j = 0; j < wishlist.length; j++) {
@@ -715,7 +714,6 @@ function toggleExtWantBuy(id) {
                     showToast('✅ Déjà dans la wishlist !');
                 }
             } else {
-                // Retirer de la wishlist si vient de external
                 wishlist = wishlist.filter(function (w) { return w.fromExternal !== id; });
                 saveWishlist();
                 showToast('❌ Retiré de la wishlist !');
@@ -731,14 +729,12 @@ function deleteExternal(id) {
     for (var i = 0; i < external.length; i++) { if (external[i].id === id) { item = external[i]; break; } }
     if (item && confirm('Supprimer "' + item.title + '" ?')) {
         external = external.filter(function (x) { return x.id !== id; });
-        // Retirer aussi de la wishlist si lié
         wishlist = wishlist.filter(function (w) { return w.fromExternal !== id; });
         saveExternal(); saveWishlist(); renderAll();
         showToast('🗑 Supprimé.');
     }
 }
 
-// RATING EXT
 function openRatingExtModal(id) {
     ratingExtBookId = id; selectedExtRating = 0;
     var b = null;
@@ -1130,7 +1126,6 @@ function deleteWishlistItem(id) {
     var item = null;
     for (var i = 0; i < wishlist.length; i++) { if (wishlist[i].id === id) { item = wishlist[i]; break; } }
     if (item && confirm('Supprimer "' + item.title + '" ?')) {
-        // Si le livre venait d'external, décocher aussi wantToBuy
         if (item.fromExternal) {
             for (var e = 0; e < external.length; e++) {
                 if (external[e].id === item.fromExternal) { external[e].wantToBuy = false; break; }
@@ -1143,7 +1138,6 @@ function deleteWishlistItem(id) {
     }
 }
 
-// TRANSFERT
 function openTransferModal(id) {
     transferBookId = id;
     var item = null;
@@ -1198,7 +1192,6 @@ function updateStats() {
         if (books[i].status === 'read') read++;
         if (books[i].rating > 0) { rSum += books[i].rating; rCount++; }
     }
-    // Ajouter les notes externes dans la moyenne
     for (var e = 0; e < external.length; e++) {
         if (external[e].rating > 0) { rSum += external[e].rating; rCount++; }
     }
@@ -1235,4 +1228,177 @@ function showToast(msg) {
     t.textContent = msg;
     document.body.appendChild(t);
     setTimeout(function () { if (t.parentNode) t.remove(); }, 3000);
+}
+
+// ============================================================
+//  FIREBASE - AUTH & SYNC
+// ============================================================
+document.addEventListener('firebaseReady', function () {
+    var auth = window.firebaseAuth;
+    window.firebaseOnAuthChanged(auth, function (user) {
+        if (user) {
+            currentUser = user;
+            showLoggedUI(user);
+            firebasePullData();
+        } else {
+            currentUser = null;
+            showNotLoggedUI();
+        }
+    });
+});
+
+function showAuthTab(tab, btn) {
+    var tabs = document.querySelectorAll('.auth-tab');
+    var forms = document.querySelectorAll('.auth-form');
+    for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+    for (var j = 0; j < forms.length; j++) forms[j].classList.remove('active');
+    btn.classList.add('active');
+    document.getElementById(tab + 'Form').classList.add('active');
+}
+
+function showLoggedUI(user) {
+    document.getElementById('authNotLogged').style.display = 'none';
+    document.getElementById('authLogged').style.display = 'block';
+    document.getElementById('userEmail').textContent = user.email;
+}
+
+function showNotLoggedUI() {
+    document.getElementById('authNotLogged').style.display = 'block';
+    document.getElementById('authLogged').style.display = 'none';
+}
+
+function firebaseRegister() {
+    var email = document.getElementById('regEmail').value.trim();
+    var pass = document.getElementById('regPassword').value;
+    var pass2 = document.getElementById('regPassword2').value;
+    if (!email || !pass) { showToast('⚠️ Remplis tous les champs !'); return; }
+    if (pass.length < 6) { showToast('⚠️ Mot de passe : min. 6 caractères'); return; }
+    if (pass !== pass2) { showToast('⚠️ Les mots de passe ne correspondent pas !'); return; }
+
+    window.firebaseCreateUser(window.firebaseAuth, email, pass)
+        .then(function () {
+            showToast('✅ Compte créé ! Envoi des données...');
+            setTimeout(firebaseSync, 1000);
+        })
+        .catch(function (error) {
+            var msg = '❌ Erreur';
+            if (error.code === 'auth/email-already-in-use') msg = '⚠️ Email déjà utilisé';
+            else if (error.code === 'auth/invalid-email') msg = '⚠️ Email invalide';
+            else if (error.code === 'auth/weak-password') msg = '⚠️ Mot de passe trop faible';
+            showToast(msg);
+        });
+}
+
+function firebaseLogin() {
+    var email = document.getElementById('loginEmail').value.trim();
+    var pass = document.getElementById('loginPassword').value;
+    if (!email || !pass) { showToast('⚠️ Remplis tous les champs !'); return; }
+
+    window.firebaseSignIn(window.firebaseAuth, email, pass)
+        .then(function () {
+            showToast('✅ Connecté ! Récupération...');
+        })
+        .catch(function (error) {
+            var msg = '❌ Erreur';
+            if (error.code === 'auth/user-not-found') msg = '⚠️ Utilisateur introuvable';
+            else if (error.code === 'auth/wrong-password') msg = '⚠️ Mot de passe incorrect';
+            else if (error.code === 'auth/invalid-email') msg = '⚠️ Email invalide';
+            else if (error.code === 'auth/invalid-credential') msg = '⚠️ Identifiants invalides';
+            showToast(msg);
+        });
+}
+
+function firebaseLogout() {
+    if (!confirm('Se déconnecter ? Tes données restent sauvegardées localement.')) return;
+    window.firebaseSignOut(window.firebaseAuth)
+        .then(function () { showToast('👋 Déconnecté !'); });
+}
+
+function firebaseSync() {
+    if (!currentUser) { showToast('⚠️ Non connecté !'); return; }
+    setSyncStatus('syncing', '⏳ Synchronisation...');
+
+    var data = {
+        books: books, wishlist: wishlist, external: external,
+        sagasMeta: sagasMeta, settings: settings, lastSync: Date.now()
+    };
+
+    var docRef = window.firebaseDoc(window.firebaseDb, 'users', currentUser.uid);
+    window.firebaseSetDoc(docRef, data)
+        .then(function () {
+            setSyncStatus('ok', '☁️ Synchronisé ' + new Date().toLocaleTimeString('fr-FR'));
+            showToast('☁️ Synchronisé !');
+        })
+        .catch(function (err) {
+            setSyncStatus('error', '❌ Erreur');
+            showToast('❌ Erreur de sync');
+            console.error(err);
+        });
+}
+
+function firebasePullData() {
+    if (!currentUser) return;
+    setSyncStatus('syncing', '⏳ Récupération...');
+
+    var docRef = window.firebaseDoc(window.firebaseDb, 'users', currentUser.uid);
+    window.firebaseGetDoc(docRef)
+        .then(function (docSnap) {
+            if (docSnap.exists()) {
+                var data = docSnap.data();
+                var localLastSync = parseInt(localStorage.getItem('lastLocalChange') || '0');
+                var cloudLastSync = data.lastSync || 0;
+
+                if (localLastSync > cloudLastSync && (books.length > 0 || wishlist.length > 0 || external.length > 0)) {
+                    if (confirm('⚠️ Données locales plus récentes.\n\nRemplacer le cloud par tes données locales ?\n\n(OK = local vers cloud / Annuler = cloud vers local)')) {
+                        firebaseSync();
+                        return;
+                    }
+                }
+
+                if (data.books) books = data.books;
+                if (data.wishlist) wishlist = data.wishlist;
+                if (data.external) external = data.external;
+                if (data.sagasMeta) sagasMeta = data.sagasMeta;
+                if (data.settings) {
+                    settings = Object.assign({}, settings, data.settings);
+                    applySettings();
+                }
+
+                localStorage.setItem('myBookPile', JSON.stringify(books));
+                localStorage.setItem('myBookWishlist', JSON.stringify(wishlist));
+                localStorage.setItem('myBookExternal', JSON.stringify(external));
+                localStorage.setItem('myBookSagasMeta', JSON.stringify(sagasMeta));
+                saveSettings();
+
+                renderAll();
+                setSyncStatus('ok', '☁️ Récupéré ' + new Date().toLocaleTimeString('fr-FR'));
+                showToast('⬇️ Données récupérées !');
+            } else {
+                setSyncStatus('ok', '☁️ Premier envoi...');
+                firebaseSync();
+            }
+        })
+        .catch(function (err) {
+            setSyncStatus('error', '❌ Erreur');
+            showToast('❌ Erreur récupération');
+            console.error(err);
+        });
+}
+
+function setSyncStatus(status, msg) {
+    var el = document.getElementById('syncStatus');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.remove('syncing', 'error');
+    if (status === 'syncing') el.classList.add('syncing');
+    if (status === 'error') el.classList.add('error');
+}
+
+function triggerAutoSync() {
+    localStorage.setItem('lastLocalChange', Date.now().toString());
+    if (!currentUser) return;
+    if (syncTimeout) clearTimeout(syncTimeout);
+    syncTimeout = setTimeout(function () {
+        firebaseSync();
+    }, 3000);
 }
