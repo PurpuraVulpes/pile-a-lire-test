@@ -1142,11 +1142,13 @@ function confirmTransfer() {
 
 function updateStats() {
     document.getElementById('totalBooks').textContent = books.length;
-    var toRead = 0, read = 0, rSum = 0, rCount = 0;
+    var toRead = 0, read = 0, rSum = 0, rCount = 0, oneShot = 0;
     for (var i = 0; i < books.length; i++) {
         if (books[i].status === 'toRead') toRead++;
         if (books[i].status === 'read') read++;
         if (books[i].rating > 0) { rSum += books[i].rating; rCount++; }
+        // Compter les One Shot (livres sans série)
+        if (!books[i].series || !books[i].series.trim()) oneShot++;
     }
     for (var e = 0; e < external.length; e++) {
         if (external[e].rating > 0) { rSum += external[e].rating; rCount++; }
@@ -1160,6 +1162,10 @@ function updateStats() {
     document.getElementById('externalCount').textContent = external.length;
     document.getElementById('totalReadGlobal').textContent = read + extReadCount;
     document.getElementById('avgRating').textContent = rCount > 0 ? (rSum / rCount).toFixed(1) : '-';
+    
+    // NOUVEAU : Compteur One Shot
+    var oneShotEl = document.getElementById('oneShotCount');
+    if (oneShotEl) oneShotEl.textContent = oneShot;
 
     var wToBuy = 0, wBought = 0, budget = 0, spent = 0;
     for (var j = 0; j < wishlist.length; j++) {
