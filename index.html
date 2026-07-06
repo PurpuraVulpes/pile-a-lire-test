@@ -1,1 +1,585 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="purple">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📚 Ma Pile à Livres</title>
+    <link rel="icon" type="image/x-icon" href="images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png">
+    <meta name="theme-color" content="#0f0c29">
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&family=Roboto:wght@300;400;500;700&family=Lora:wght@400;500;600;700&family=Merriweather:wght@300;400;700&family=Montserrat:wght@300;400;600;700&family=Playfair+Display:wght@400;500;700&family=Open+Sans:wght@300;400;600;700&family=Nunito:wght@300;400;600;700&family=Dancing+Script:wght@400;600;700&family=Comfortaa:wght@300;400;600;700&family=Quicksand:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
 
+    <div class="particles" id="particles"></div>
+
+    <nav class="main-nav">
+        <button class="nav-btn active" onclick="switchTab('home', this)">📚 Bibliothèque</button>
+        <button class="nav-btn" onclick="switchTab('external', this)">📖 Empruntés/Lus</button>
+        <button class="nav-btn" onclick="switchTab('sagas', this)">📚 Sagas</button>
+        <button class="nav-btn" onclick="switchTab('authors', this)">✍️ Auteurs</button>
+        <button class="nav-btn" onclick="switchTab('wishlist', this)">🛒 À acheter</button>
+        <button class="nav-btn" onclick="switchTab('settings', this)">⚙️ Paramètres</button>
+    </nav>
+
+    <!-- PAGE HOME -->
+    <div class="page active" id="page-home">
+        <header>
+            <div class="logo">📚</div>
+            <h1>Ma Pile à Livres</h1>
+            <p class="subtitle">Organise tes lectures, découvre ton prochain livre !</p>
+        </header>
+
+        <section class="stats-bar">
+            <div class="stat"><span class="stat-number" id="totalBooks">0</span><span class="stat-label">Ma biblio</span></div>
+            <div class="stat"><span class="stat-number" id="toReadBooks">0</span><span class="stat-label">À lire</span></div>
+            <div class="stat"><span class="stat-number" id="readBooks">0</span><span class="stat-label">Lus</span></div>
+            <div class="stat"><span class="stat-number" id="externalCount">0</span><span class="stat-label">Empruntés</span></div>
+            <div class="stat"><span class="stat-number" id="totalReadGlobal">0</span><span class="stat-label">Total lus</span></div>
+            <div class="stat"><span class="stat-number" id="avgRating">-</span><span class="stat-label">Note moy.</span></div>
+            <div class="stat"><span class="stat-number" id="sagasCount">0</span><span class="stat-label">Sagas</span></div>
+            <div class="stat"><span class="stat-number" id="wishlistCount">0</span><span class="stat-label">À acheter</span></div>
+        </section>
+
+        <section class="add-section">
+            <h2>➕ Ajouter un livre</h2>
+            <form id="addBookForm">
+                <div class="form-row">
+                    <div class="input-group">
+                        <label for="bookTitle">Titre</label>
+                        <input type="text" id="bookTitle" placeholder="Ex : L'Œil du Monde" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="bookAuthor">Auteur</label>
+                        <input type="text" id="bookAuthor" placeholder="Ex : Robert Jordan" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="input-group">
+                        <label for="bookGenre">Genre</label>
+                        <select id="bookGenre">
+                            <option value="Roman">📖 Roman</option>
+                            <option value="SF">🚀 Science-Fiction</option>
+                            <option value="Fantasy">🐉 Fantasy</option>
+                            <option value="Fantastique">👻 Fantastique</option>
+                            <option value="Thriller">🔪 Thriller</option>
+                            <option value="Thriller psy">🧠 Thriller psychologique</option>
+                            <option value="Policier">🕵️ Policier</option>
+                            <option value="Romance">💕 Romance</option>
+                            <option value="Dark Romance">🖤 Dark Romance</option>
+                            <option value="New Adult">🔥 New Adult</option>
+                            <option value="Young Adult">🌟 Young Adult</option>
+                            <option value="Jeunesse">🧸 Jeunesse</option>
+                            <option value="BD">🎨 BD</option>
+                            <option value="Manga">🏯 Manga</option>
+                            <option value="Biographie">📋 Biographie</option>
+                            <option value="Philosophie">💭 Philosophie</option>
+                            <option value="Poésie">🌸 Poésie</option>
+                            <option value="Histoire">🏛️ Histoire</option>
+                            <option value="Dev perso">🧠 Dév. personnel</option>
+                            <option value="Autre">📦 Autre</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="bookFormat">Format</label>
+                        <select id="bookFormat">
+                            <option value="Broché">📕 Broché</option>
+                            <option value="Poche">📒 Poche</option>
+                            <option value="Collector">✨ Collector</option>
+                            <option value="Relié">📗 Relié</option>
+                            <option value="Numérique">📱 Numérique</option>
+                            <option value="Audio">🎧 Audio</option>
+                            <option value="Autre">📦 Autre</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="input-group saga-input-group">
+                        <label for="bookSeries">Série / Saga (optionnel)</label>
+                        <input type="text" id="bookSeries" placeholder="Ex : La Roue du Temps" list="seriesSuggestions" oninput="updateSeriesSuggestions()">
+                        <datalist id="seriesSuggestions"></datalist>
+                        <span class="input-hint">💡 Même nom = regroupement automatique</span>
+                    </div>
+                    <div class="input-group tome-input-group">
+                        <label for="bookTome">Tome n°</label>
+                        <input type="number" id="bookTome" placeholder="1" min="1">
+                    </div>
+                    <div class="input-group">
+                        <label for="bookTotalTomes">Tomes prévus</label>
+                        <input type="number" id="bookTotalTomes" placeholder="14" min="1">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-add"><span>📥</span> Ajouter à la pile</button>
+            </form>
+        </section>
+
+        <section class="random-section">
+            <h2>🎲 Quel livre lire ?</h2>
+            <p>Laisse le hasard décider pour toi !</p>
+            <div class="random-filter">
+                <label>Genre :</label>
+                <select id="randomGenreFilter"><option value="all">Tous</option></select>
+            </div>
+            <button class="btn btn-random" id="randomBtn" onclick="pickRandomBook()">🎰 Choisir au hasard</button>
+            <div class="random-result" id="randomResult"></div>
+        </section>
+
+        <section class="filter-section">
+            <h2>📋 Ma bibliothèque</h2>
+            <div class="filters">
+                <button class="filter-btn active" onclick="filterBooks('all', this)">📚 Tous</button>
+                <button class="filter-btn" onclick="filterBooks('toRead', this)">📖 À lire</button>
+                <button class="filter-btn" onclick="filterBooks('read', this)">✅ Lus</button>
+            </div>
+            <div class="sort-bar">
+                <label>Trier :</label>
+                <select id="bookSortSelect" onchange="renderBooks()">
+                    <option value="default">Par défaut</option>
+                    <option value="title">Titre A-Z</option>
+                    <option value="author">Auteur A-Z</option>
+                    <option value="rating">Note ↓</option>
+                    <option value="series">Série</option>
+                    <option value="dateAdded">Date d'ajout</option>
+                </select>
+            </div>
+            <div class="search-bar">
+                <input type="text" id="searchInput" placeholder="🔍 Rechercher..." oninput="renderBooks()">
+            </div>
+        </section>
+
+        <section class="books-list" id="booksList"></section>
+    </div>
+
+    <!-- ==================== PAGE EXTERNAL (Empruntés / Lus ailleurs) ==================== -->
+    <div class="page" id="page-external">
+        <header>
+            <div class="logo">📖</div>
+            <h1>Livres Empruntés / Lus ailleurs</h1>
+            <p class="subtitle">Livres lus à la bibliothèque, sur internet, empruntés à un ami...</p>
+        </header>
+
+        <section class="stats-bar">
+            <div class="stat"><span class="stat-number" id="extTotal">0</span><span class="stat-label">Total</span></div>
+            <div class="stat"><span class="stat-number" id="extRead">0</span><span class="stat-label">Lus</span></div>
+            <div class="stat"><span class="stat-number" id="extToBuy">0</span><span class="stat-label">À acheter</span></div>
+            <div class="stat"><span class="stat-number" id="extAvgRating">-</span><span class="stat-label">Note moy.</span></div>
+        </section>
+
+        <section class="auto-saga-info">
+            <div class="info-banner ext-banner">
+                <span class="info-icon">💡</span>
+                <div>
+                    <strong>Livres externes à ta collection</strong>
+                    <p>Ces livres sont comptés dans tes stats de lecture mais ne sont pas dans ta bibliothèque perso ni dans les sagas. Coche "je veux l'acheter" pour l'ajouter automatiquement à ta wishlist !</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="add-section">
+            <h2>➕ Ajouter un livre externe</h2>
+            <form id="addExtForm">
+                <div class="form-row">
+                    <div class="input-group">
+                        <label for="extTitle">Titre</label>
+                        <input type="text" id="extTitle" placeholder="Ex : Les Misérables" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="extAuthor">Auteur</label>
+                        <input type="text" id="extAuthor" placeholder="Ex : Victor Hugo" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="input-group">
+                        <label for="extGenre">Genre</label>
+                        <select id="extGenre">
+                            <option value="Roman">📖 Roman</option>
+                            <option value="SF">🚀 Science-Fiction</option>
+                            <option value="Fantasy">🐉 Fantasy</option>
+                            <option value="Fantastique">👻 Fantastique</option>
+                            <option value="Thriller">🔪 Thriller</option>
+                            <option value="Thriller psy">🧠 Thriller psy</option>
+                            <option value="Policier">🕵️ Policier</option>
+                            <option value="Romance">💕 Romance</option>
+                            <option value="Dark Romance">🖤 Dark Romance</option>
+                            <option value="New Adult">🔥 New Adult</option>
+                            <option value="Young Adult">🌟 Young Adult</option>
+                            <option value="Jeunesse">🧸 Jeunesse</option>
+                            <option value="BD">🎨 BD</option>
+                            <option value="Manga">🏯 Manga</option>
+                            <option value="Biographie">📋 Biographie</option>
+                            <option value="Philosophie">💭 Philosophie</option>
+                            <option value="Poésie">🌸 Poésie</option>
+                            <option value="Histoire">🏛️ Histoire</option>
+                            <option value="Dev perso">🧠 Dév. personnel</option>
+                            <option value="Autre">📦 Autre</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="extSource">Provenance</label>
+                        <select id="extSource">
+                            <option value="Bibliothèque">🏛️ Bibliothèque</option>
+                            <option value="Internet">💻 Internet</option>
+                            <option value="Ami">👥 Ami/Famille</option>
+                            <option value="École">🎓 École</option>
+                            <option value="Autre">📦 Autre</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="input-group">
+                        <label for="extSeries">Série (optionnel)</label>
+                        <input type="text" id="extSeries" placeholder="Ex : Harry Potter">
+                        <span class="input-hint">💡 Non répertoriée dans l'onglet Sagas</span>
+                    </div>
+                    <div class="input-group tome-input-group">
+                        <label for="extTome">Tome n°</label>
+                        <input type="number" id="extTome" placeholder="1" min="1">
+                    </div>
+                    <div class="input-group">
+                        <label for="extStatus">Statut</label>
+                        <select id="extStatus">
+                            <option value="read">✅ Déjà lu</option>
+                            <option value="reading">📖 En cours</option>
+                            <option value="toRead">📥 À lire</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="input-group" style="flex:1 1 100%">
+                        <label for="extNotes">Notes (optionnel)</label>
+                        <input type="text" id="extNotes" placeholder="Ex : Prêté par Alice, à rendre en juin...">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="input-group" style="flex:1 1 100%">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="extWantToBuy">
+                            <span>🛒 J'aimerais l'acheter (ajout automatique à la wishlist)</span>
+                        </label>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-add-ext"><span>📖</span> Ajouter</button>
+            </form>
+        </section>
+
+        <section class="filter-section">
+            <div class="filters">
+                <button class="filter-btn active" onclick="filterExt('all', this)">📖 Tous</button>
+                <button class="filter-btn" onclick="filterExt('read', this)">✅ Lus</button>
+                <button class="filter-btn" onclick="filterExt('reading', this)">📖 En cours</button>
+                <button class="filter-btn" onclick="filterExt('toRead', this)">📥 À lire</button>
+                <button class="filter-btn" onclick="filterExt('wantToBuy', this)">🛒 À acheter</button>
+            </div>
+            <div class="sort-bar">
+                <label>Trier :</label>
+                <select id="extSortSelect" onchange="renderExternal()">
+                    <option value="default">Par défaut</option>
+                    <option value="title">Titre A-Z</option>
+                    <option value="author">Auteur A-Z</option>
+                    <option value="rating">Note ↓</option>
+                    <option value="source">Provenance</option>
+                    <option value="dateAdded">Date d'ajout</option>
+                </select>
+            </div>
+            <div class="search-bar">
+                <input type="text" id="extSearchInput" placeholder="🔍 Rechercher..." oninput="renderExternal()">
+            </div>
+        </section>
+
+        <section class="books-list" id="externalList"></section>
+    </div>
+
+    <!-- PAGE SAGAS -->
+    <div class="page" id="page-sagas">
+        <header>
+            <div class="logo">📚</div>
+            <h1>Mes Sagas</h1>
+            <p class="subtitle">Générées automatiquement à partir de ta bibliothèque</p>
+        </header>
+
+        <section class="stats-bar">
+            <div class="stat"><span class="stat-number" id="sagasTotalStat">0</span><span class="stat-label">Sagas</span></div>
+            <div class="stat"><span class="stat-number" id="sagasCompletedStat">0</span><span class="stat-label">Terminées</span></div>
+            <div class="stat"><span class="stat-number" id="sagasInProgressStat">0</span><span class="stat-label">En cours</span></div>
+            <div class="stat"><span class="stat-number" id="sagasTotalTomes">0</span><span class="stat-label">Tomes</span></div>
+        </section>
+
+        <section class="auto-saga-info">
+            <div class="info-banner">
+                <span class="info-icon">💡</span>
+                <div>
+                    <strong>Les sagas se créent automatiquement !</strong>
+                    <p>Uniquement les livres de ta bibliothèque perso sont regroupés ici. Les livres empruntés/lus ailleurs ne sont pas comptés.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="filter-section">
+            <div class="filters">
+                <button class="filter-btn active" onclick="filterSagas('all', this)">📚 Toutes</button>
+                <button class="filter-btn" onclick="filterSagas('inProgress', this)">🔄 En cours</button>
+                <button class="filter-btn" onclick="filterSagas('completed', this)">✅ Terminées</button>
+                <button class="filter-btn" onclick="filterSagas('notStarted', this)">⏳ Pas commencées</button>
+            </div>
+            <div class="search-bar">
+                <input type="text" id="sagaSearchInput" placeholder="🔍 Rechercher..." oninput="renderSagas()">
+            </div>
+        </section>
+
+        <section class="sagas-list" id="sagasList"></section>
+    </div>
+
+    <!-- PAGE AUTHORS -->
+    <div class="page" id="page-authors">
+        <header>
+            <div class="logo">✍️</div>
+            <h1>Mes Auteurs</h1>
+            <p class="subtitle">Tous les auteurs de ta biblio + livres externes</p>
+        </header>
+
+        <section class="stats-bar">
+            <div class="stat"><span class="stat-number" id="authorsTotal">0</span><span class="stat-label">Auteurs</span></div>
+            <div class="stat"><span class="stat-number" id="authorTopName">-</span><span class="stat-label">Top auteur</span></div>
+            <div class="stat"><span class="stat-number" id="authorTopCount">0</span><span class="stat-label">Livres du top</span></div>
+        </section>
+
+        <section class="filter-section">
+            <div class="sort-bar">
+                <label>Trier :</label>
+                <select id="authorSortSelect" onchange="renderAuthors()">
+                    <option value="count">Nb livres ↓</option>
+                    <option value="name">Nom A-Z</option>
+                    <option value="rating">Note ↓</option>
+                    <option value="read">Lus ↓</option>
+                </select>
+            </div>
+            <div class="search-bar">
+                <input type="text" id="authorSearchInput" placeholder="🔍 Rechercher..." oninput="renderAuthors()">
+            </div>
+        </section>
+
+        <section class="authors-list" id="authorsList"></section>
+    </div>
+
+    <!-- PAGE WISHLIST -->
+    <div class="page" id="page-wishlist">
+        <header>
+            <div class="logo">🛒</div>
+            <h1>Ma Liste d'Achats</h1>
+            <p class="subtitle">Les livres que tu veux acquérir</p>
+        </header>
+
+        <section class="stats-bar">
+            <div class="stat"><span class="stat-number" id="wishlistTotal">0</span><span class="stat-label">À acheter</span></div>
+            <div class="stat"><span class="stat-number" id="wishlistBought">0</span><span class="stat-label">Achetés</span></div>
+            <div class="stat"><span class="stat-number" id="wishlistBudget">0 €</span><span class="stat-label">Budget</span></div>
+            <div class="stat"><span class="stat-number" id="wishlistSpent">0 €</span><span class="stat-label">Dépensé</span></div>
+        </section>
+
+        <section class="add-section">
+            <h2>➕ Ajouter à la liste d'achats</h2>
+            <form id="addWishlistForm">
+                <div class="form-row">
+                    <div class="input-group"><label for="wishTitle">Titre</label><input type="text" id="wishTitle" placeholder="Ex : Dune" required></div>
+                    <div class="input-group"><label for="wishAuthor">Auteur</label><input type="text" id="wishAuthor" placeholder="Ex : Frank Herbert" required></div>
+                </div>
+                <div class="form-row">
+                    <div class="input-group">
+                        <label for="wishGenre">Genre</label>
+                        <select id="wishGenre">
+                            <option value="Roman">📖 Roman</option><option value="SF">🚀 SF</option><option value="Fantasy">🐉 Fantasy</option>
+                            <option value="Fantastique">👻 Fantastique</option><option value="Thriller">🔪 Thriller</option>
+                            <option value="Thriller psy">🧠 Thriller psy</option><option value="Policier">🕵️ Policier</option>
+                            <option value="Romance">💕 Romance</option><option value="Dark Romance">🖤 Dark Romance</option>
+                            <option value="New Adult">🔥 New Adult</option><option value="Young Adult">🌟 Young Adult</option>
+                            <option value="Jeunesse">🧸 Jeunesse</option><option value="BD">🎨 BD</option><option value="Manga">🏯 Manga</option>
+                            <option value="Biographie">📋 Biographie</option><option value="Philosophie">💭 Philosophie</option>
+                            <option value="Poésie">🌸 Poésie</option><option value="Histoire">🏛️ Histoire</option>
+                            <option value="Dev perso">🧠 Dév. perso</option><option value="Autre">📦 Autre</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="wishFormat">Format</label>
+                        <select id="wishFormat">
+                            <option value="Broché">📕 Broché</option><option value="Poche">📒 Poche</option>
+                            <option value="Collector">✨ Collector</option><option value="Relié">📗 Relié</option>
+                            <option value="Numérique">📱 Numérique</option><option value="Audio">🎧 Audio</option>
+                            <option value="Autre">📦 Autre</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="wishPriority">Priorité</label>
+                        <select id="wishPriority"><option value="3">🔴 Haute</option><option value="2" selected>🟡 Moyenne</option><option value="1">🟢 Basse</option></select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="input-group saga-input-group">
+                        <label for="wishSeries">Série (optionnel)</label>
+                        <input type="text" id="wishSeries" placeholder="Ex : Harry Potter" list="wishSeriesSuggestions">
+                        <datalist id="wishSeriesSuggestions"></datalist>
+                    </div>
+                    <div class="input-group tome-input-group"><label for="wishTome">Tome n°</label><input type="number" id="wishTome" placeholder="3" min="1"></div>
+                    <div class="input-group"><label for="wishPrice">Prix (€)</label><input type="number" id="wishPrice" placeholder="15" min="0" step="0.01"></div>
+                </div>
+                <div class="form-row">
+                    <div class="input-group" style="flex:1 1 100%"><label for="wishNotes">Notes (optionnel)</label><input type="text" id="wishNotes" placeholder="Ex : Vu chez Fnac..."></div>
+                </div>
+                <button type="submit" class="btn btn-add-wish"><span>🛒</span> Ajouter</button>
+            </form>
+        </section>
+
+        <section class="filter-section">
+            <div class="filters">
+                <button class="filter-btn active" onclick="filterWishlist('all', this)">🛒 Tous</button>
+                <button class="filter-btn" onclick="filterWishlist('toBuy', this)">📋 À acheter</button>
+                <button class="filter-btn" onclick="filterWishlist('bought', this)">✅ Achetés</button>
+            </div>
+            <div class="search-bar"><input type="text" id="wishSearchInput" placeholder="🔍 Rechercher..." oninput="renderWishlist()"></div>
+        </section>
+
+        <section class="books-list" id="wishlistList"></section>
+    </div>
+
+    <!-- PAGE SETTINGS -->
+    <div class="page" id="page-settings">
+        <header>
+            <div class="logo">⚙️</div>
+            <h1>Paramètres</h1>
+            <p class="subtitle">Personnalise ton expérience</p>
+        </header>
+
+        <section class="settings-section">
+            <h2>🎨 Thème de couleurs</h2>
+            <p class="settings-desc">Choisis l'ambiance qui te plaît.</p>
+            <div class="theme-grid">
+                <button class="theme-card" onclick="setTheme('purple')" data-theme-btn="purple"><div class="theme-preview purple-prev"></div><span>💜 Violet</span></button>
+                <button class="theme-card" onclick="setTheme('blue')" data-theme-btn="blue"><div class="theme-preview blue-prev"></div><span>💙 Bleu</span></button>
+                <button class="theme-card" onclick="setTheme('green')" data-theme-btn="green"><div class="theme-preview green-prev"></div><span>💚 Vert</span></button>
+                <button class="theme-card" onclick="setTheme('red')" data-theme-btn="red"><div class="theme-preview red-prev"></div><span>❤️ Rouge</span></button>
+                <button class="theme-card" onclick="setTheme('orange')" data-theme-btn="orange"><div class="theme-preview orange-prev"></div><span>🧡 Orange</span></button>
+                <button class="theme-card" onclick="setTheme('pink')" data-theme-btn="pink"><div class="theme-preview pink-prev"></div><span>💗 Rose</span></button>
+                <button class="theme-card" onclick="setTheme('dark')" data-theme-btn="dark"><div class="theme-preview dark-prev"></div><span>🖤 Noir</span></button>
+                <button class="theme-card" onclick="setTheme('cyan')" data-theme-btn="cyan"><div class="theme-preview cyan-prev"></div><span>🩵 Cyan</span></button>
+                <button class="theme-card" onclick="setTheme('gold')" data-theme-btn="gold"><div class="theme-preview gold-prev"></div><span>💛 Or</span></button>
+            </div>
+        </section>
+
+        <section class="settings-section">
+            <h2>🔤 Police d'écriture</h2>
+            <p class="settings-desc">Choisis la police qui te plaît le plus.</p>
+            <div class="font-grid">
+                <button class="font-card" onclick="setFont('Poppins')" data-font-btn="Poppins" style="font-family:'Poppins',sans-serif"><span class="font-preview">Aa</span><span class="font-name">Poppins</span></button>
+                <button class="font-card" onclick="setFont('Roboto')" data-font-btn="Roboto" style="font-family:'Roboto',sans-serif"><span class="font-preview">Aa</span><span class="font-name">Roboto</span></button>
+                <button class="font-card" onclick="setFont('Lora')" data-font-btn="Lora" style="font-family:'Lora',serif"><span class="font-preview">Aa</span><span class="font-name">Lora</span></button>
+                <button class="font-card" onclick="setFont('Merriweather')" data-font-btn="Merriweather" style="font-family:'Merriweather',serif"><span class="font-preview">Aa</span><span class="font-name">Merriweather</span></button>
+                <button class="font-card" onclick="setFont('Montserrat')" data-font-btn="Montserrat" style="font-family:'Montserrat',sans-serif"><span class="font-preview">Aa</span><span class="font-name">Montserrat</span></button>
+                <button class="font-card" onclick="setFont('Playfair Display')" data-font-btn="Playfair Display" style="font-family:'Playfair Display',serif"><span class="font-preview">Aa</span><span class="font-name">Playfair</span></button>
+                <button class="font-card" onclick="setFont('Open Sans')" data-font-btn="Open Sans" style="font-family:'Open Sans',sans-serif"><span class="font-preview">Aa</span><span class="font-name">Open Sans</span></button>
+                <button class="font-card" onclick="setFont('Nunito')" data-font-btn="Nunito" style="font-family:'Nunito',sans-serif"><span class="font-preview">Aa</span><span class="font-name">Nunito</span></button>
+                <button class="font-card" onclick="setFont('Quicksand')" data-font-btn="Quicksand" style="font-family:'Quicksand',sans-serif"><span class="font-preview">Aa</span><span class="font-name">Quicksand</span></button>
+                <button class="font-card" onclick="setFont('Comfortaa')" data-font-btn="Comfortaa" style="font-family:'Comfortaa',cursive"><span class="font-preview">Aa</span><span class="font-name">Comfortaa</span></button>
+                <button class="font-card" onclick="setFont('Dancing Script')" data-font-btn="Dancing Script" style="font-family:'Dancing Script',cursive"><span class="font-preview">Aa</span><span class="font-name">Dancing</span></button>
+            </div>
+        </section>
+
+        <section class="settings-section">
+            <h2>✨ Effets visuels</h2>
+            <div class="setting-row">
+                <div><span class="setting-label">Particules</span><span class="setting-hint">Bulles flottantes</span></div>
+                <label class="toggle"><input type="checkbox" id="toggleParticles" checked onchange="toggleParticlesF()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+                <div><span class="setting-label">Animations</span><span class="setting-hint">Effets au survol</span></div>
+                <label class="toggle"><input type="checkbox" id="toggleAnimations" checked onchange="toggleAnimationsF()"><span class="toggle-slider"></span></label>
+            </div>
+        </section>
+
+        <section class="settings-section">
+            <h2>💾 Données</h2>
+            <div class="data-actions">
+                <button class="btn btn-export" onclick="exportData()">📤 Exporter</button>
+                <button class="btn btn-import" onclick="document.getElementById('importFile').click()">📥 Importer</button>
+                <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+                <button class="btn btn-danger" onclick="clearAllData()">🗑️ Tout supprimer</button>
+            </div>
+        </section>
+
+        <section class="settings-section">
+            <h2>ℹ️ À propos</h2>
+            <div class="about-card">
+                <p><strong>📚 Ma Pile à Livres</strong> — Version 8.0</p>
+                <p>Bibliothèque, empruntés, sagas, auteurs, wishlist, thèmes, polices</p>
+                <p class="about-small">Données sauvegardées dans le navigateur (localStorage)</p>
+            </div>
+        </section>
+    </div>
+
+    <!-- MODAL NOTATION -->
+    <div class="modal-overlay" id="ratingModal">
+        <div class="modal">
+            <button class="modal-close" onclick="closeRatingModal()">✕</button>
+            <h2>⭐ Noter ce livre</h2>
+            <p class="modal-book-title" id="modalBookTitle"></p>
+            <div class="stars-input" id="starsInput">
+                <span class="star-btn" onclick="setRating(1)">★</span>
+                <span class="star-btn" onclick="setRating(2)">★</span>
+                <span class="star-btn" onclick="setRating(3)">★</span>
+                <span class="star-btn" onclick="setRating(4)">★</span>
+                <span class="star-btn" onclick="setRating(5)">★</span>
+            </div>
+            <textarea id="bookReview" placeholder="Ton avis (optionnel)..."></textarea>
+            <button class="btn btn-confirm" onclick="confirmRating()">✅ Confirmer</button>
+        </div>
+    </div>
+
+    <!-- MODAL NOTATION EXT -->
+    <div class="modal-overlay" id="ratingExtModal">
+        <div class="modal">
+            <button class="modal-close" onclick="closeRatingExtModal()">✕</button>
+            <h2>⭐ Noter ce livre</h2>
+            <p class="modal-book-title" id="modalExtBookTitle"></p>
+            <div class="stars-input" id="starsExtInput">
+                <span class="star-btn" onclick="setExtRating(1)">★</span>
+                <span class="star-btn" onclick="setExtRating(2)">★</span>
+                <span class="star-btn" onclick="setExtRating(3)">★</span>
+                <span class="star-btn" onclick="setExtRating(4)">★</span>
+                <span class="star-btn" onclick="setExtRating(5)">★</span>
+            </div>
+            <textarea id="extBookReview" placeholder="Ton avis (optionnel)..."></textarea>
+            <button class="btn btn-confirm" onclick="confirmExtRating()">✅ Confirmer</button>
+        </div>
+    </div>
+
+    <!-- MODAL TRANSFERT -->
+    <div class="modal-overlay" id="transferModal">
+        <div class="modal">
+            <button class="modal-close" onclick="closeTransferModal()">✕</button>
+            <h2>📚 Transférer</h2>
+            <p class="modal-book-title" id="transferBookTitle"></p>
+            <p class="transfer-desc">Ajouter à la bibliothèque comme "À lire".</p>
+            <div class="transfer-options"><label class="transfer-option"><input type="checkbox" id="removeFromWishlist" checked><span>Retirer de la wishlist</span></label></div>
+            <button class="btn btn-confirm" onclick="confirmTransfer()">📚 Transférer</button>
+        </div>
+    </div>
+
+    <!-- MODAL EDIT SAGA -->
+    <div class="modal-overlay" id="editSagaModal">
+        <div class="modal">
+            <button class="modal-close" onclick="closeEditSagaModal()">✕</button>
+            <h2>✏️ Modifier la saga</h2>
+            <p class="modal-book-title" id="editSagaTitle"></p>
+            <div class="input-group" style="margin:15px 0;text-align:left">
+                <label for="editSagaTotalTomes" style="color:#aaa">Nombre total de tomes</label>
+                <input type="number" id="editSagaTotalTomes" min="1">
+            </div>
+            <button class="btn btn-confirm" onclick="confirmEditSaga()">✅ Sauvegarder</button>
+        </div>
+    </div>
+
+    <footer><p>📚 Ma Pile à Livres v8.0 — Fait avec ❤️ — 2025</p></footer>
+    <script src="script.js"></script>
+</body>
+</html>
