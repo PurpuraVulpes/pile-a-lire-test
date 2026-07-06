@@ -634,39 +634,34 @@
 
     <footer><p>📚 Ma Pile à Livres v9.0 — Fait avec ❤️ — 2025</p></footer>
 
-    <!-- ========== FIREBASE ========== -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+<!-- FIREBASE -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-        // ⚠️ REMPLACE PAR TA CONFIG FIREBASE
-        const firebaseConfig = {
-            apiKey: "AIzaSyCEJvY_9h3JAqZI5wHJd0SSUrEKfu9Ch7M",
-            authDomain: "pile-a-lire-ec70b.firebaseapp.com",
-            projectId: "pile-a-lire-ec70b",
-            storageBucket: "pile-a-lire-ec70b.firebasestorage.app",
-            messagingSenderId: "283870126026",
-            appId: "1:283870126026:web:d18c5a0e56843bb5a03933"
-        };
+const firebaseConfig = {
+  apiKey: "AIzaSyCEJvY_9h3JAqZI5wHJd0SSUrEKfu9Ch7M",
+  authDomain: "pile-a-lire-ec70b.firebaseapp.com",
+  projectId: "pile-a-lire-ec70b",
+  storageBucket: "pile-a-lire-ec70b.appspot.com",
+  messagingSenderId: "283870126026",
+  appId: "1:283870126026:web:d18c5a0e56843bb5a03933"
+};
 
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
-        window.firebaseAuth = auth;
-        window.firebaseDb = db;
-        window.firebaseCreateUser = createUserWithEmailAndPassword;
-        window.firebaseSignIn = signInWithEmailAndPassword;
-        window.firebaseSignOut = signOut;
-        window.firebaseOnAuthChanged = onAuthStateChanged;
-        window.firebaseDoc = doc;
-        window.firebaseSetDoc = setDoc;
-        window.firebaseGetDoc = getDoc;
+window.firebaseAuth = auth;
+window.firebaseDb = db;
+window.firebaseCreateUser = createUserWithEmailAndPassword;
+window.firebaseSignIn = signInWithEmailAndPassword;
+window.firebaseSignOut = signOut;
+window.firebaseOnAuthChanged = onAuthStateChanged;
+window.firebaseDoc = doc;
+window.firebaseSetDoc = setDoc;
+window.firebaseGetDoc = getDoc;
 
-        document.dispatchEvent(new Event('firebaseReady'));
-    </script>
-
-    <script src="script.js"></script>
-</body>
-</html>
+document.dispatchEvent(new Event('firebaseReady'));
+</script>
