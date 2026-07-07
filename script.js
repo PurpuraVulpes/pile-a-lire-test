@@ -1,1338 +1,2155 @@
 // ============================================================
-//  DONNÉES
+//  MA PILE À LIVRES — SCRIPT PRINCIPAL v11.1
+//  Optimisé : événements délégués, bugs corrigés, performances
 // ============================================================
-var books = JSON.parse(localStorage.getItem('myBookPile')) || [];
-var wishlist = JSON.parse(localStorage.getItem('myBookWishlist')) || [];
-var external = JSON.parse(localStorage.getItem('myBookExternal')) || [];
-var sagasMeta = JSON.parse(localStorage.getItem('myBookSagasMeta')) || {};
-var settings = JSON.parse(localStorage.getItem('myBookPileSettings')) || {
-    theme: 'purple', particles: true, animations: true, font: 'Poppins'
-};
-if (!settings.font) settings.font = 'Poppins';
 
-var currentFilter = 'all';
-var wishlistFilter = 'all';
-var sagaFilter = 'all';
-var extFilter = 'all';
-var ratingBookId = null;
-var selectedRating = 0;
-var ratingExtBookId = null;
-var selectedExtRating = 0;
-var transferBookId = null;
-var editSagaKey = null;
-var currentUser = null;
-var syncTimeout = null;
+(function () {
+    'use strict';
 
-// ============================================================
-//  INIT
-// ============================================================
-document.addEventListener('DOMContentLoaded', function () {
-    applySettings();
-    createParticles();
-    renderAll();
-    document.getElementById('addBookForm').addEventListener('submit', addBook);
-    document.getElementById('addWishlistForm').addEventListener('submit', addWishlistItem);
-    document.getElementById('addExtForm').addEventListener('submit', addExternal);
-});
+    // ============================================================
+    //  DONNÉES & ÉTAT
+    // ============================================================
+    var books = loadJSON('myBookPile', []);
+    var wishlist = loadJSON('myBookWishlist', []);
+    var external = loadJSON('myBookExternal', []);
+    var sagasMeta = loadJSON('myBookSagasMeta', {});
+    var settings = loadJSON('myBookPileSettings', {
+        theme: 'purple', particles: true, animations: true, font: 'Poppins'
+    });
+    if (!settings.font) settings.font = 'Poppins';
 
-function renderAll() {
-    renderBooks(); renderExternal(); renderSagas(); renderAuthors(); renderWishlist();
-    updateStats(); updateRandomGenreFilter(); updateSeriesSuggestions(); updateWishSeriesSuggestions();
-}
-
-// SAVE
-function saveBooks() { localStorage.setItem('myBookPile', JSON.stringify(books)); triggerAutoSync(); }
-function saveWishlist() { localStorage.setItem('myBookWishlist', JSON.stringify(wishlist)); triggerAutoSync(); }
-function saveExternal() { localStorage.setItem('myBookExternal', JSON.stringify(external)); triggerAutoSync(); }
-function saveSagasMeta() { localStorage.setItem('myBookSagasMeta', JSON.stringify(sagasMeta)); triggerAutoSync(); }
-function saveSettings() { localStorage.setItem('myBookPileSettings', JSON.stringify(settings)); }
-
-// SETTINGS
-function applySettings() {
-    document.documentElement.setAttribute('data-theme', settings.theme);
-    document.documentElement.style.setProperty('--main-font', settings.font || 'Poppins');
-    updateActiveThemeCard();
-    updateActiveFontCard();
-    var tp = document.getElementById('toggleParticles');
-    var ta = document.getElementById('toggleAnimations');
-    if (tp) tp.checked = settings.particles;
-    if (ta) ta.checked = settings.animations;
-    var p = document.getElementById('particles');
-    if (p) p.classList.toggle('hidden', !settings.particles);
-    document.body.classList.toggle('no-animations', !settings.animations);
-}
-
-function switchTab(tab, btn) {
-    var pages = document.querySelectorAll('.page');
-    var btns = document.querySelectorAll('.nav-btn');
-    for (var i = 0; i < pages.length; i++) pages[i].classList.remove('active');
-    for (var j = 0; j < btns.length; j++) btns[j].classList.remove('active');
-    var target = document.getElementById('page-' + tab);
-    if (target) target.classList.add('active');
-    if (btn) btn.classList.add('active');
-    if (tab === 'authors') renderAuthors();
-    if (tab === 'sagas') renderSagas();
-    if (tab === 'external') renderExternal();
-}
-
-function setTheme(t) {
-    settings.theme = t;
-    document.documentElement.setAttribute('data-theme', t);
-    updateActiveThemeCard();
-    saveSettings();
-    showToast('🎨 Thème "' + t + '" appliqué !');
-}
-
-function updateActiveThemeCard() {
-    var cards = document.querySelectorAll('.theme-card');
-    for (var i = 0; i < cards.length; i++) {
-        cards[i].classList.toggle('active', cards[i].getAttribute('data-theme-btn') === settings.theme);
-    }
-}
-
-function setFont(f) {
-    settings.font = f;
-    document.documentElement.style.setProperty('--main-font', f);
-    updateActiveFontCard();
-    saveSettings();
-    showToast('🔤 Police "' + f + '" appliquée !');
-}
-
-function updateActiveFontCard() {
-    var cards = document.querySelectorAll('.font-card');
-    for (var i = 0; i < cards.length; i++) {
-        cards[i].classList.toggle('active', cards[i].getAttribute('data-font-btn') === settings.font);
-    }
-}
-
-function toggleParticlesF() {
-    settings.particles = document.getElementById('toggleParticles').checked;
-    document.getElementById('particles').classList.toggle('hidden', !settings.particles);
-    saveSettings();
-}
-
-function toggleAnimationsF() {
-    settings.animations = document.getElementById('toggleAnimations').checked;
-    document.body.classList.toggle('no-animations', !settings.animations);
-    saveSettings();
-}
-
-// EXPORT / IMPORT
-function exportData() {
-    var data = { books: books, wishlist: wishlist, external: external, sagasMeta: sagasMeta, settings: settings };
-    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'ma-pile-a-livres.json';
-    a.click();
-    showToast('📤 Données exportées !');
-}
-
-function importData(event) {
-    var file = event.target.files[0];
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onload = function (e) {
-        try {
-            var data = JSON.parse(e.target.result);
-            if (data.books) { books = data.books; localStorage.setItem('myBookPile', JSON.stringify(books)); }
-            if (data.wishlist) { wishlist = data.wishlist; localStorage.setItem('myBookWishlist', JSON.stringify(wishlist)); }
-            if (data.external) { external = data.external; localStorage.setItem('myBookExternal', JSON.stringify(external)); }
-            if (data.sagasMeta) { sagasMeta = data.sagasMeta; localStorage.setItem('myBookSagasMeta', JSON.stringify(sagasMeta)); }
-            if (data.settings) { settings = Object.assign({}, settings, data.settings); saveSettings(); applySettings(); }
-            renderAll();
-            triggerAutoSync();
-            showToast('📥 Importé !');
-        } catch (err) { showToast('❌ Fichier invalide !'); }
+    var state = {
+        currentFilter: 'all',
+        wishlistFilter: 'all',
+        sagaFilter: 'all',
+        extFilter: 'all',
+        ratingBookId: null,
+        selectedRating: 0,
+        ratingExtBookId: null,
+        selectedExtRating: 0,
+        transferBookId: null,
+        editSagaKey: null,
+        editBookId: null,
+        editWishId: null,
+        editExtId: null,
+        currentUser: null,
+        syncTimeout: null
     };
-    reader.readAsText(file);
-    event.target.value = '';
-}
 
-function clearAllData() {
-    if (confirm('⚠️ Tout supprimer ? Irréversible.')) {
+    // ============================================================
+    //  HELPERS
+    // ============================================================
+    function $(id) { return document.getElementById(id); }
+
+    function setText(id, value) {
+        var el = $(id);
+        if (el) el.textContent = value;
+    }
+
+    function getVal(id) {
+        var el = $(id);
+        return el ? el.value.trim() : '';
+    }
+
+    function getRawVal(id) {
+        var el = $(id);
+        return el ? el.value : '';
+    }
+
+    function loadJSON(key, fallback) {
+        try {
+            var data = JSON.parse(localStorage.getItem(key));
+            return data !== null ? data : fallback;
+        } catch (e) {
+            return fallback;
+        }
+    }
+
+    function saveJSON(key, data) {
+        try {
+            localStorage.setItem(key, JSON.stringify(data));
+        } catch (e) {
+            console.warn('Erreur localStorage:', e);
+        }
+    }
+
+    function findById(arr, id) {
+        for (var i = 0; i < arr.length; i++) {
+            if (arr[i].id === id) return arr[i];
+        }
+        return null;
+    }
+
+    function findIndexById(arr, id) {
+        for (var i = 0; i < arr.length; i++) {
+            if (arr[i].id === id) return i;
+        }
+        return -1;
+    }
+
+    function removeById(arr, id) {
+        var result = [];
+        for (var i = 0; i < arr.length; i++) {
+            if (arr[i].id !== id) result.push(arr[i]);
+        }
+        return result;
+    }
+
+    function escapeHTML(str) {
+        if (!str) return '';
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
+
+    function nowDateStr() {
+        return new Date().toLocaleDateString('fr-FR');
+    }
+
+    function nowTimestamp() {
+        return Date.now();
+    }
+
+    // ============================================================
+    //  SAUVEGARDE
+    // ============================================================
+    function saveBooks() { saveJSON('myBookPile', books); triggerAutoSync(); }
+    function saveWishlist() { saveJSON('myBookWishlist', wishlist); triggerAutoSync(); }
+    function saveExternal() { saveJSON('myBookExternal', external); triggerAutoSync(); }
+    function saveSagasMeta() { saveJSON('myBookSagasMeta', sagasMeta); triggerAutoSync(); }
+    function saveSettings() { saveJSON('myBookPileSettings', settings); }
+
+    // ============================================================
+    //  INITIALISATION
+    // ============================================================
+    document.addEventListener('DOMContentLoaded', function () {
+        applySettings();
+        createParticles();
+        renderAll();
+        bindEvents();
+    });
+
+    function renderAll() {
+        renderBooks();
+        renderExternal();
+        renderSagas();
+        renderAuthors();
+        renderWishlist();
+        updateStats();
+        updateRandomGenreFilter();
+        updateSeriesSuggestions();
+        updateWishSeriesSuggestions();
+    }
+
+    // ============================================================
+    //  BINDING D'ÉVÉNEMENTS (remplace tous les onclick inline)
+    // ============================================================
+    function bindEvents() {
+        // Navigation
+        delegateClick('.main-nav', '.nav-btn', function (btn) {
+            var tab = btn.getAttribute('data-tab');
+            if (tab) switchTab(tab, btn);
+        });
+
+        // Filtres (home, external, sagas, wishlist)
+        delegateClick(document.body, '.filter-btn[data-filter]', function (btn) {
+            var filter = btn.getAttribute('data-filter');
+            var target = btn.getAttribute('data-target');
+            if (target === 'home') filterBooks(filter, btn);
+            else if (target === 'external') filterExt(filter, btn);
+            else if (target === 'sagas') filterSagas(filter, btn);
+            else if (target === 'wishlist') filterWishlist(filter, btn);
+        });
+
+        // Thèmes
+        delegateClick(document.body, '.theme-card[data-theme-btn]', function (btn) {
+            setTheme(btn.getAttribute('data-theme-btn'));
+        });
+
+        // Polices
+        delegateClick(document.body, '.font-card[data-font-btn]', function (btn) {
+            setFont(btn.getAttribute('data-font-btn'));
+        });
+
+        // Étoiles modales (biblio)
+        delegateClick($('starsInput'), '.star-btn', function (btn) {
+            var r = parseInt(btn.getAttribute('data-rating'));
+            if (r) { state.selectedRating = r; updateStarsDisplay(); }
+        });
+
+        // Étoiles modales (externe)
+        delegateClick($('starsExtInput'), '.star-btn', function (btn) {
+            var r = parseInt(btn.getAttribute('data-rating'));
+            if (r) { state.selectedExtRating = r; updateExtStarsDisplay(); }
+        });
+
+        // Auth tabs
+        delegateClick(document.body, '.auth-tab[data-auth-tab]', function (btn) {
+            showAuthTab(btn.getAttribute('data-auth-tab'), btn);
+        });
+
+        // Formulaires
+        bindForm('addBookForm', addBook);
+        bindForm('addExtForm', addExternal);
+        bindForm('addWishlistForm', addWishlistItem);
+
+        // Boutons simples par ID
+        bindClick('randomBtn', pickRandomBook);
+        bindClick('confirmRatingBtn', confirmRating);
+        bindClick('confirmExtRatingBtn', confirmExtRating);
+        bindClick('confirmTransferBtn', confirmTransfer);
+        bindClick('confirmEditSagaBtn', confirmEditSaga);
+        bindClick('confirmEditBookBtn', confirmEditBook);
+        bindClick('confirmEditWishBtn', confirmEditWish);
+        bindClick('confirmEditExtBtn', confirmEditExt);
+
+        // Fermeture modales
+        bindClick('closeRatingModal', function () { closeModal('ratingModal'); });
+        bindClick('closeRatingExtModal', function () { closeModal('ratingExtModal'); });
+        bindClick('closeTransferModal', function () { closeModal('transferModal'); });
+        bindClick('closeEditSagaModal', function () { closeModal('editSagaModal'); state.editSagaKey = null; });
+        bindClick('closeEditBookModal', function () { closeModal('editBookModal'); state.editBookId = null; });
+        bindClick('closeEditWishModal', function () { closeModal('editWishModal'); state.editWishId = null; });
+        bindClick('closeEditExtModal', function () { closeModal('editExtModal'); state.editExtId = null; });
+
+        // Fermeture modale par clic sur overlay
+        var overlays = document.querySelectorAll('.modal-overlay');
+        for (var i = 0; i < overlays.length; i++) {
+            overlays[i].addEventListener('click', function (e) {
+                if (e.target === this) this.classList.remove('active');
+            });
+        }
+
+        // Fermeture modale par Escape
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                var modals = document.querySelectorAll('.modal-overlay.active');
+                for (var i = 0; i < modals.length; i++) modals[i].classList.remove('active');
+            }
+        });
+
+        // Paramètres
+        bindClick('btnExport', exportData);
+        bindClick('btnImportTrigger', function () { var f = $('importFile'); if (f) f.click(); });
+        bindClick('btnClearAll', clearAllData);
+
+        var importFile = $('importFile');
+        if (importFile) importFile.addEventListener('change', importData);
+
+        // Toggles
+        bindChange('toggleParticles', toggleParticlesF);
+        bindChange('toggleAnimations', toggleAnimationsF);
+
+        // Tri & recherche
+        bindChange('bookSortSelect', renderBooks);
+        bindChange('extSortSelect', renderExternal);
+        bindChange('authorSortSelect', renderAuthors);
+        bindInput('searchInput', renderBooks);
+        bindInput('extSearchInput', renderExternal);
+        bindInput('sagaSearchInput', renderSagas);
+        bindInput('authorSearchInput', renderAuthors);
+        bindInput('wishSearchInput', renderWishlist);
+
+        // Dates lecture
+        bindChange('bookDateStart', function () { calcReadingDays('book'); });
+        bindChange('bookDateEnd', function () { calcReadingDays('book'); });
+        bindChange('extDateStart', function () { calcReadingDays('ext'); });
+        bindChange('extDateEnd', function () { calcReadingDays('ext'); });
+
+        // Suggestions séries
+        bindInput('bookSeries', updateSeriesSuggestions);
+
+        // Firebase
+        bindClick('btnLogin', firebaseLogin);
+        bindClick('btnRegister', firebaseRegister);
+        bindClick('btnSync', firebaseSync);
+        bindClick('btnPullData', firebasePullData);
+        bindClick('btnLogout', firebaseLogout);
+
+        // Délégation pour les actions dynamiques (cartes générées)
+        delegateClick(document.body, '[data-action]', handleDynamicAction);
+    }
+
+    // Helpers binding
+    function bindClick(id, fn) {
+        var el = $(id);
+        if (el) el.addEventListener('click', fn);
+    }
+
+    function bindChange(id, fn) {
+        var el = $(id);
+        if (el) el.addEventListener('change', fn);
+    }
+
+    function bindInput(id, fn) {
+        var el = $(id);
+        if (el) el.addEventListener('input', fn);
+    }
+
+    function bindForm(id, fn) {
+        var el = $(id);
+        if (el) el.addEventListener('submit', fn);
+    }
+
+    function delegateClick(parent, selector, fn) {
+        if (typeof parent === 'string') parent = $(parent);
+        if (!parent) return;
+        parent.addEventListener('click', function (e) {
+            var target = e.target.closest(selector);
+            if (target && parent.contains(target)) fn(target, e);
+        });
+    }
+
+    // ============================================================
+    //  ACTIONS DYNAMIQUES (boutons dans les cartes générées)
+    // ============================================================
+    function handleDynamicAction(btn) {
+        var action = btn.getAttribute('data-action');
+        var id = parseInt(btn.getAttribute('data-id'));
+        var value = btn.getAttribute('data-value');
+
+        switch (action) {
+            // Bibliothèque
+            case 'markRead':       markAsRead(id); break;
+            case 'markUnread':     markAsUnread(id); break;
+            case 'deleteBook':     deleteBook(id); break;
+            case 'rateBook':       openRatingModal(id); break;
+            case 'editBook':       openEditBookModal(id); break;
+
+            // Externe
+            case 'deleteExt':      deleteExternal(id); break;
+            case 'rateExt':        openRatingExtModal(id); break;
+            case 'editExt':        openEditExtModal(id); break;
+            case 'changeExtStatus': changeExtStatus(id, value); break;
+            case 'toggleExtBuy':   toggleExtWantBuy(id); break;
+
+            // Wishlist
+            case 'deleteWish':     deleteWishlistItem(id); break;
+            case 'markBought':     markAsBought(id); break;
+            case 'markUnbought':   markAsUnbought(id); break;
+            case 'transferWish':   openTransferModal(id); break;
+            case 'editWish':       openEditWishModal(id); break;
+
+            // Sagas
+            case 'editSaga':       openEditSagaModal(value); break;
+
+            // Auteurs
+            case 'toggleAuthor':   toggleAuthorBooks(value, btn); break;
+        }
+    }
+
+    // ============================================================
+    //  PARAMÈTRES
+    // ============================================================
+    function applySettings() {
+        document.documentElement.setAttribute('data-theme', settings.theme);
+        document.documentElement.style.setProperty('--main-font', settings.font || 'Poppins');
+        updateActiveThemeCard();
+        updateActiveFontCard();
+
+        var tp = $('toggleParticles');
+        var ta = $('toggleAnimations');
+        if (tp) tp.checked = settings.particles;
+        if (ta) ta.checked = settings.animations;
+
+        var p = $('particles');
+        if (p) p.classList.toggle('hidden', !settings.particles);
+        document.body.classList.toggle('no-animations', !settings.animations);
+    }
+
+    function switchTab(tab, btn) {
+        var pages = document.querySelectorAll('.page');
+        var btns = document.querySelectorAll('.nav-btn');
+        for (var i = 0; i < pages.length; i++) pages[i].classList.remove('active');
+        for (var j = 0; j < btns.length; j++) btns[j].classList.remove('active');
+
+        var target = $('page-' + tab);
+        if (target) target.classList.add('active');
+        if (btn) btn.classList.add('active');
+
+        // Render la page active
+        if (tab === 'authors') renderAuthors();
+        else if (tab === 'sagas') renderSagas();
+        else if (tab === 'external') renderExternal();
+        else if (tab === 'wishlist') renderWishlist();
+    }
+
+    function setTheme(t) {
+        settings.theme = t;
+        document.documentElement.setAttribute('data-theme', t);
+        updateActiveThemeCard();
+        saveSettings();
+        showToast('🎨 Thème "' + t + '" appliqué !');
+    }
+
+    function updateActiveThemeCard() {
+        var cards = document.querySelectorAll('.theme-card');
+        for (var i = 0; i < cards.length; i++) {
+            cards[i].classList.toggle('active', cards[i].getAttribute('data-theme-btn') === settings.theme);
+        }
+    }
+
+    function setFont(f) {
+        settings.font = f;
+        document.documentElement.style.setProperty('--main-font', f);
+        updateActiveFontCard();
+        saveSettings();
+        showToast('🔤 Police "' + f + '" appliquée !');
+    }
+
+    function updateActiveFontCard() {
+        var cards = document.querySelectorAll('.font-card');
+        for (var i = 0; i < cards.length; i++) {
+            cards[i].classList.toggle('active', cards[i].getAttribute('data-font-btn') === settings.font);
+        }
+    }
+
+    function toggleParticlesF() {
+        var el = $('toggleParticles');
+        if (!el) return;
+        settings.particles = el.checked;
+        var p = $('particles');
+        if (p) p.classList.toggle('hidden', !settings.particles);
+        saveSettings();
+    }
+
+    function toggleAnimationsF() {
+        var el = $('toggleAnimations');
+        if (!el) return;
+        settings.animations = el.checked;
+        document.body.classList.toggle('no-animations', !settings.animations);
+        saveSettings();
+    }
+
+    function exportData() {
+        var data = { books: books, wishlist: wishlist, external: external, sagasMeta: sagasMeta, settings: settings };
+        var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'ma-pile-a-livres.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showToast('📤 Données exportées !');
+    }
+
+    function importData(event) {
+        var file = event.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            try {
+                var data = JSON.parse(e.target.result);
+                if (data.books && Array.isArray(data.books)) { books = data.books; saveJSON('myBookPile', books); }
+                if (data.wishlist && Array.isArray(data.wishlist)) { wishlist = data.wishlist; saveJSON('myBookWishlist', wishlist); }
+                if (data.external && Array.isArray(data.external)) { external = data.external; saveJSON('myBookExternal', external); }
+                if (data.sagasMeta && typeof data.sagasMeta === 'object') { sagasMeta = data.sagasMeta; saveJSON('myBookSagasMeta', sagasMeta); }
+                if (data.settings && typeof data.settings === 'object') {
+                    settings = Object.assign({}, settings, data.settings);
+                    saveSettings();
+                    applySettings();
+                }
+                renderAll();
+                triggerAutoSync();
+                showToast('📥 Importé !');
+            } catch (err) {
+                showToast('❌ Fichier invalide !');
+                console.error('Import error:', err);
+            }
+        };
+        reader.readAsText(file);
+        event.target.value = '';
+    }
+
+    function clearAllData() {
+        if (!confirm('⚠️ Tout supprimer ? Irréversible.')) return;
         books = []; wishlist = []; external = []; sagasMeta = {};
-        localStorage.setItem('myBookPile', '[]');
-        localStorage.setItem('myBookWishlist', '[]');
-        localStorage.setItem('myBookExternal', '[]');
-        localStorage.setItem('myBookSagasMeta', '{}');
+        saveJSON('myBookPile', []);
+        saveJSON('myBookWishlist', []);
+        saveJSON('myBookExternal', []);
+        saveJSON('myBookSagasMeta', {});
         renderAll();
         triggerAutoSync();
         showToast('🗑️ Tout supprimé.');
     }
-}
 
-function createParticles() {
-    var c = document.getElementById('particles');
-    if (!c) return;
-    for (var i = 0; i < 50; i++) {
-        var p = document.createElement('div');
-        p.classList.add('particle');
-        var s = Math.random() * 6 + 2;
-        p.style.width = s + 'px';
-        p.style.height = s + 'px';
-        p.style.left = Math.random() * 100 + '%';
-        p.style.animationDuration = (Math.random() * 15 + 10) + 's';
-        p.style.animationDelay = (Math.random() * 10) + 's';
-        c.appendChild(p);
+    // ============================================================
+    //  UTILITAIRES DATE
+    // ============================================================
+    function calcReadingDays(type) {
+        var prefix = type === 'ext' ? 'ext' : 'book';
+        var startEl = $(prefix + 'DateStart');
+        var endEl = $(prefix + 'DateEnd');
+        var displayEl = $(prefix + 'ReadingDays');
+        if (!startEl || !endEl || !displayEl) return;
+
+        if (!startEl.value || !endEl.value) {
+            displayEl.classList.remove('active');
+            return;
+        }
+
+        var start = new Date(startEl.value);
+        var end = new Date(endEl.value);
+        var days = Math.floor((end - start) / 86400000); // 1000*60*60*24
+
+        displayEl.classList.add('active');
+        displayEl.classList.remove('warning');
+
+        if (days < 0) {
+            displayEl.textContent = '⚠️ La date de fin doit être après le début !';
+            displayEl.classList.add('warning');
+        } else {
+            var total = days + 1;
+            displayEl.textContent = total === 1
+                ? '⚡ Lu en 1 jour !'
+                : '📖 Lu en ' + total + ' jours';
+        }
     }
-}
 
-function getSeriesKey(name) { return name.trim().toLowerCase(); }
+    function getReadingDaysText(startDate, endDate) {
+        if (!startDate || !endDate) return null;
+        var days = Math.floor((new Date(endDate) - new Date(startDate)) / 86400000);
+        return days >= 0 ? days + 1 : null;
+    }
 
-function getAllSeries() {
-    var seriesMap = {};
-    for (var i = 0; i < books.length; i++) {
-        var b = books[i];
-        if (b.series && b.series.trim()) {
+    function formatDate(dateStr) {
+        if (!dateStr) return '';
+        var d = new Date(dateStr);
+        return String(d.getDate()).padStart(2, '0') + '/' +
+               String(d.getMonth() + 1).padStart(2, '0') + '/' +
+               d.getFullYear();
+    }
+
+    // ============================================================
+    //  PARTICULES
+    // ============================================================
+    function createParticles() {
+        var c = $('particles');
+        if (!c) return;
+        var frag = document.createDocumentFragment();
+        for (var i = 0; i < 50; i++) {
+            var p = document.createElement('div');
+            p.className = 'particle';
+            var s = Math.random() * 6 + 2;
+            p.style.cssText = 'width:' + s + 'px;height:' + s + 'px;left:' +
+                (Math.random() * 100) + '%;animation-duration:' +
+                (Math.random() * 15 + 10) + 's;animation-delay:' +
+                (Math.random() * 10) + 's';
+            frag.appendChild(p);
+        }
+        c.appendChild(frag);
+    }
+
+    // ============================================================
+    //  GESTION DES SÉRIES
+    // ============================================================
+    function getSeriesKey(name) { return name.trim().toLowerCase(); }
+
+    function getAllSeries() {
+        var seriesMap = {};
+        for (var i = 0; i < books.length; i++) {
+            var b = books[i];
+            if (!b.series || !b.series.trim()) continue;
+
             var key = getSeriesKey(b.series);
             if (!seriesMap[key]) {
-                seriesMap[key] = { key: key, name: b.series.trim(), author: b.author, genre: b.genre, books: [] };
+                seriesMap[key] = {
+                    key: key, name: b.series.trim(), author: b.author,
+                    genre: b.genre, books: []
+                };
             }
             seriesMap[key].books.push(b);
         }
-    }
-    var keys = Object.keys(seriesMap);
-    for (var k = 0; k < keys.length; k++) {
-        var key = keys[k];
-        var meta = sagasMeta[key] || {};
-        seriesMap[key].totalTomes = meta.totalTomes || seriesMap[key].books.length;
-        seriesMap[key].books.sort(function (a, b) { return (a.tome || 999) - (b.tome || 999); });
-        var readCount = 0;
-        for (var j = 0; j < seriesMap[key].books.length; j++) {
-            if (seriesMap[key].books[j].status === 'read') readCount++;
+
+        var keys = Object.keys(seriesMap);
+        for (var k = 0; k < keys.length; k++) {
+            var key = keys[k];
+            var s = seriesMap[key];
+            var meta = sagasMeta[key] || {};
+
+            s.books.sort(function (a, b) { return (a.tome || 999) - (b.tome || 999); });
+
+            var readCount = 0;
+            for (var j = 0; j < s.books.length; j++) {
+                if (s.books[j].status === 'read') readCount++;
+            }
+
+            s.totalTomes = meta.totalTomes || s.books.length;
+            s.readCount = readCount;
+            s.ownedCount = s.books.length;
+            s.progress = s.totalTomes > 0 ? Math.round((readCount / s.totalTomes) * 100) : 0;
+            s.isCompleted = readCount >= s.totalTomes && s.totalTomes > 0;
+            s.isStarted = readCount > 0;
         }
-        seriesMap[key].readCount = readCount;
-        seriesMap[key].ownedCount = seriesMap[key].books.length;
-        seriesMap[key].progress = seriesMap[key].totalTomes > 0 ? Math.round((readCount / seriesMap[key].totalTomes) * 100) : 0;
-        seriesMap[key].isCompleted = readCount >= seriesMap[key].totalTomes && seriesMap[key].totalTomes > 0;
-        seriesMap[key].isStarted = readCount > 0;
+        return seriesMap;
     }
-    return seriesMap;
-}
 
-function updateSeriesSuggestions() {
-    var datalist = document.getElementById('seriesSuggestions');
-    if (!datalist) return;
-    var allSeries = getAllSeries();
-    var names = [];
-    var values = Object.keys(allSeries);
-    for (var i = 0; i < values.length; i++) {
-        var n = allSeries[values[i]].name;
-        if (names.indexOf(n) === -1) names.push(n);
-    }
-    datalist.innerHTML = '';
-    for (var j = 0; j < names.length; j++) {
-        var opt = document.createElement('option');
-        opt.value = names[j];
-        datalist.appendChild(opt);
-    }
-    var input = document.getElementById('bookSeries');
-    if (input && input.value.trim()) {
-        var key = getSeriesKey(input.value);
-        var meta = sagasMeta[key];
-        if (meta && meta.totalTomes) {
-            var totInput = document.getElementById('bookTotalTomes');
-            if (totInput && !totInput.value) totInput.value = meta.totalTomes;
+    function updateSeriesSuggestions() {
+        var datalist = $('seriesSuggestions');
+        if (!datalist) return;
+
+        var allSeries = getAllSeries();
+        var names = [];
+        var values = Object.keys(allSeries);
+        for (var i = 0; i < values.length; i++) {
+            var n = allSeries[values[i]].name;
+            if (names.indexOf(n) === -1) names.push(n);
         }
-    }
-}
 
-function updateWishSeriesSuggestions() {
-    var datalist = document.getElementById('wishSeriesSuggestions');
-    if (!datalist) return;
-    var allSeries = getAllSeries();
-    var names = [];
-    var values = Object.keys(allSeries);
-    for (var i = 0; i < values.length; i++) {
-        var n = allSeries[values[i]].name;
-        if (names.indexOf(n) === -1) names.push(n);
-    }
-    for (var j = 0; j < wishlist.length; j++) {
-        if (wishlist[j].series && names.indexOf(wishlist[j].series) === -1) names.push(wishlist[j].series);
-    }
-    datalist.innerHTML = '';
-    for (var k = 0; k < names.length; k++) {
-        var opt = document.createElement('option');
-        opt.value = names[k];
-        datalist.appendChild(opt);
-    }
-}
-
-var FORMAT_ICONS = { 'Broché': '📕', 'Poche': '📒', 'Collector': '✨', 'Relié': '📗', 'Numérique': '📱', 'Audio': '🎧', 'Autre': '📦' };
-
-function getFormatHtml(format) {
-    if (!format) return '';
-    var icon = FORMAT_ICONS[format] || '📦';
-    var cls = format.toLowerCase().replace(/[éè]/g, 'e').replace(/\s/g, '-');
-    return '<span class="format-tag format-' + cls + '">' + icon + ' ' + format + '</span>';
-}
-
-var SOURCE_ICONS = { 'Bibliothèque': '🏛️', 'Internet': '💻', 'Ami': '👥', 'École': '🎓', 'Autre': '📦' };
-
-function addBook(e) {
-    e.preventDefault();
-    var title = document.getElementById('bookTitle').value.trim();
-    var author = document.getElementById('bookAuthor').value.trim();
-    var genre = document.getElementById('bookGenre').value;
-    var format = document.getElementById('bookFormat').value;
-    var series = document.getElementById('bookSeries').value.trim();
-    var tome = parseInt(document.getElementById('bookTome').value) || null;
-    var totalTomes = parseInt(document.getElementById('bookTotalTomes').value) || null;
-    if (!title || !author) return;
-
-    books.push({
-        id: Date.now(), title: title, author: author, genre: genre, format: format,
-        series: series || null, tome: tome,
-        status: 'toRead', rating: 0, review: '',
-        dateAdded: new Date().toLocaleDateString('fr-FR'), dateRead: null
-    });
-
-    if (series) {
-        var key = getSeriesKey(series);
-        if (!sagasMeta[key]) sagasMeta[key] = {};
-        if (totalTomes && totalTomes > 0) sagasMeta[key].totalTomes = totalTomes;
-        saveSagasMeta();
-    }
-
-    saveBooks(); renderAll();
-    document.getElementById('addBookForm').reset();
-    showToast('📥 "' + title + '" ajouté !');
-}
-
-function renderBooks() {
-    var container = document.getElementById('booksList');
-    if (!container) return;
-    var query = document.getElementById('searchInput').value.toLowerCase();
-    var sortBy = document.getElementById('bookSortSelect').value;
-
-    var filtered = [];
-    for (var i = 0; i < books.length; i++) {
-        var b = books[i];
-        var mf = currentFilter === 'all' || (currentFilter === 'toRead' && b.status === 'toRead') || (currentFilter === 'read' && b.status === 'read');
-        var ms = b.title.toLowerCase().indexOf(query) !== -1 || b.author.toLowerCase().indexOf(query) !== -1 ||
-            (b.genre && b.genre.toLowerCase().indexOf(query) !== -1) ||
-            (b.series && b.series.toLowerCase().indexOf(query) !== -1) ||
-            (b.format && b.format.toLowerCase().indexOf(query) !== -1);
-        if (mf && ms) filtered.push(b);
-    }
-
-    filtered.sort(function (a, b) {
-        switch (sortBy) {
-            case 'title': return a.title.localeCompare(b.title);
-            case 'author': return a.author.localeCompare(b.author);
-            case 'rating': return b.rating - a.rating;
-            case 'series':
-                var sA = a.series || 'zzzzz', sB = b.series || 'zzzzz';
-                if (sA !== sB) return sA.localeCompare(sB);
-                return (a.tome || 999) - (b.tome || 999);
-            case 'dateAdded': return b.id - a.id;
-            default:
-                if (a.status === 'toRead' && b.status === 'read') return -1;
-                if (a.status === 'read' && b.status === 'toRead') return 1;
-                return b.rating - a.rating;
+        var html = '';
+        for (var j = 0; j < names.length; j++) {
+            html += '<option value="' + escapeHTML(names[j]) + '">';
         }
-    });
+        datalist.innerHTML = html;
 
-    if (!filtered.length) {
-        container.innerHTML = '<div class="empty-state"><span class="emoji">📭</span><p>Aucun livre trouvé.</p></div>';
-        return;
-    }
-
-    var html = '';
-    for (var j = 0; j < filtered.length; j++) {
-        var bk = filtered[j];
-        var starsH = bk.rating > 0 ? '<div class="stars">' + '★'.repeat(bk.rating) + '☆'.repeat(5 - bk.rating) + '</div>' : '';
-        var reviewH = bk.review ? '<div class="review">"' + bk.review + '"</div>' : '';
-        var sc = bk.status === 'read' ? 'read' : 'to-read';
-        var sl = bk.status === 'read' ? '✅ Lu' : '📖 À lire';
-        var sagaH = bk.series ? '<span class="saga-tag">📖 ' + bk.series + '</span>' : '';
-        var tomeH = bk.tome ? '<span class="tome-tag">Tome ' + bk.tome + '</span>' : '';
-        var formatH = getFormatHtml(bk.format);
-
-        html += '<div class="book-card ' + sc + '">' +
-            '<button class="delete-icon" onclick="deleteBook(' + bk.id + ')">🗑</button>' +
-            '<h3>' + bk.title + '</h3><p class="author">par ' + bk.author + '</p>' +
-            '<span class="genre-tag">' + (bk.genre || 'Autre') + '</span>' +
-            '<span class="status-badge ' + sc + '">' + sl + '</span>' +
-            formatH + tomeH + sagaH + starsH + reviewH +
-            '<div class="actions">' +
-            (bk.status === 'toRead' ? '<button class="btn-mark-read" onclick="markAsRead(' + bk.id + ')">✅ Lu</button>' : '<button class="btn-unread" onclick="markAsUnread(' + bk.id + ')">📖 À lire</button>') +
-            (bk.status === 'read' ? '<button class="btn-rate" onclick="openRatingModal(' + bk.id + ')">⭐ ' + (bk.rating > 0 ? 'Modifier' : 'Noter') + '</button>' : '') +
-            '</div></div>';
-    }
-    container.innerHTML = html;
-}
-
-function filterBooks(f, btn) {
-    currentFilter = f;
-    var btns = document.querySelectorAll('#page-home .filter-btn');
-    for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
-    if (btn) btn.classList.add('active');
-    renderBooks();
-}
-
-function markAsRead(id) {
-    for (var i = 0; i < books.length; i++) {
-        if (books[i].id === id) {
-            books[i].status = 'read'; books[i].dateRead = new Date().toLocaleDateString('fr-FR');
-            saveBooks(); renderAll();
-            showToast('✅ Lu !');
-            var bid = id;
-            setTimeout(function () { openRatingModal(bid); }, 400);
-            return;
+        // Auto-fill tomes prévus
+        var input = $('bookSeries');
+        if (input && input.value.trim()) {
+            var key = getSeriesKey(input.value);
+            var meta = sagasMeta[key];
+            if (meta && meta.totalTomes) {
+                var totInput = $('bookTotalTomes');
+                if (totInput && !totInput.value) totInput.value = meta.totalTomes;
+            }
         }
     }
-}
 
-function markAsUnread(id) {
-    for (var i = 0; i < books.length; i++) {
-        if (books[i].id === id) {
-            books[i].status = 'toRead'; books[i].rating = 0; books[i].review = ''; books[i].dateRead = null;
-            saveBooks(); renderAll();
-            showToast('📖 Remis à lire !');
-            return;
+    function updateWishSeriesSuggestions() {
+        var datalist = $('wishSeriesSuggestions');
+        if (!datalist) return;
+
+        var allSeries = getAllSeries();
+        var names = [];
+        var values = Object.keys(allSeries);
+        for (var i = 0; i < values.length; i++) {
+            var n = allSeries[values[i]].name;
+            if (names.indexOf(n) === -1) names.push(n);
         }
-    }
-}
+        for (var j = 0; j < wishlist.length; j++) {
+            if (wishlist[j].series && names.indexOf(wishlist[j].series) === -1) {
+                names.push(wishlist[j].series);
+            }
+        }
 
-function deleteBook(id) {
-    var book = null;
-    for (var i = 0; i < books.length; i++) { if (books[i].id === id) { book = books[i]; break; } }
-    if (book && confirm('Supprimer "' + book.title + '" ?')) {
-        books = books.filter(function (x) { return x.id !== id; });
-        if (book.series) {
-            var key = getSeriesKey(book.series);
-            var remaining = books.filter(function (x) { return x.series && getSeriesKey(x.series) === key; });
-            if (remaining.length === 0) delete sagasMeta[key];
+        var html = '';
+        for (var k = 0; k < names.length; k++) {
+            html += '<option value="' + escapeHTML(names[k]) + '">';
+        }
+        datalist.innerHTML = html;
+    }
+
+    // ============================================================
+    //  FORMAT & SOURCE HELPERS
+    // ============================================================
+    var FORMAT_ICONS = { 'Broché': '📕', 'Poche': '📒', 'Collector': '✨', 'Relié': '📗', 'Audiobook': '🎧' };
+    var SOURCE_ICONS = { 'Bibliothèque': '🏛️', 'Internet': '💻', 'École': '🎓', 'Ma collection': '📚' };
+
+    function getFormatHtml(format) {
+        if (!format) return '';
+        var icon = FORMAT_ICONS[format] || '📕';
+        var cls = format.toLowerCase().replace(/[éè]/g, 'e').replace(/\s/g, '-');
+        return '<span class="format-tag format-' + cls + '">' + icon + ' ' + escapeHTML(format) + '</span>';
+    }
+
+    function buildReadingHtml(item) {
+        var readDays = getReadingDaysText(item.dateStart, item.dateEnd);
+        if (!readDays) return '';
+        var html = '<span class="reading-info">📖 Lu en ' + readDays + ' jour' + (readDays > 1 ? 's' : '') + '</span>';
+        if (item.dateStart && item.dateEnd) {
+            html += '<p class="reading-dates">📅 Du ' + formatDate(item.dateStart) + ' au ' + formatDate(item.dateEnd) + '</p>';
+        }
+        return html;
+    }
+
+    function buildStarsHtml(rating) {
+        if (!rating || rating <= 0) return '';
+        return '<div class="stars">' + '★'.repeat(rating) + '☆'.repeat(5 - rating) + '</div>';
+    }
+
+    function buildReviewHtml(review) {
+        if (!review) return '';
+        return '<div class="review">"' + escapeHTML(review) + '"</div>';
+    }
+
+    // ============================================================
+    //  MODALE HELPERS
+    // ============================================================
+    function openModal(id) {
+        var m = $(id);
+        if (m) m.classList.add('active');
+    }
+
+    function closeModal(id) {
+        var m = $(id);
+        if (m) m.classList.remove('active');
+    }
+
+    // ============================================================
+    //  BIBLIOTHÈQUE — AJOUT
+    // ============================================================
+    function addBook(e) {
+        e.preventDefault();
+        var title = getVal('bookTitle');
+        var author = getVal('bookAuthor');
+        var genre = getRawVal('bookGenre');
+        var format = getRawVal('bookFormat');
+        var series = getVal('bookSeries');
+        var tome = parseInt(getRawVal('bookTome')) || null;
+        var totalTomes = parseInt(getRawVal('bookTotalTomes')) || null;
+
+        if (!title || !author) { showToast('⚠️ Titre et auteur requis !'); return; }
+
+        books.push({
+            id: nowTimestamp(), title: title, author: author, genre: genre, format: format,
+            series: series || null, tome: tome,
+            status: 'toRead', rating: 0, review: '',
+            dateAdded: nowDateStr(), dateRead: null,
+            dateStart: null, dateEnd: null
+        });
+
+        if (series) {
+            var key = getSeriesKey(series);
+            if (!sagasMeta[key]) sagasMeta[key] = {};
+            if (totalTomes && totalTomes > 0) sagasMeta[key].totalTomes = totalTomes;
             saveSagasMeta();
         }
-        saveBooks(); renderAll();
-        showToast('🗑 Supprimé.');
+
+        saveBooks();
+        renderAll();
+        var form = $('addBookForm');
+        if (form) form.reset();
+        showToast('📥 "' + title + '" ajouté !');
     }
-}
 
-function openRatingModal(id) {
-    ratingBookId = id; selectedRating = 0;
-    var b = null;
-    for (var i = 0; i < books.length; i++) { if (books[i].id === id) { b = books[i]; break; } }
-    if (!b) return;
-    document.getElementById('modalBookTitle').textContent = b.title;
-    document.getElementById('bookReview').value = b.review || '';
-    if (b.rating > 0) selectedRating = b.rating;
-    updateStarsDisplay();
-    document.getElementById('ratingModal').classList.add('active');
-}
+    // ============================================================
+    //  BIBLIOTHÈQUE — RENDU
+    // ============================================================
+    function renderBooks() {
+        var container = $('booksList');
+        if (!container) return;
 
-function closeRatingModal() { document.getElementById('ratingModal').classList.remove('active'); }
-function setRating(n) { selectedRating = n; updateStarsDisplay(); }
-function updateStarsDisplay() {
-    var stars = document.querySelectorAll('#starsInput .star-btn');
-    for (var i = 0; i < stars.length; i++) stars[i].classList.toggle('active', i < selectedRating);
-}
-function confirmRating() {
-    if (!selectedRating) { showToast('⚠️ Sélectionne au moins 1 étoile !'); return; }
-    for (var i = 0; i < books.length; i++) {
-        if (books[i].id === ratingBookId) {
-            books[i].rating = selectedRating;
-            books[i].review = document.getElementById('bookReview').value.trim();
-            saveBooks(); renderAll();
-            showToast('⭐ Noté ' + selectedRating + '/5 !');
-            break;
+        var query = getVal('searchInput').toLowerCase();
+        var sortBy = getRawVal('bookSortSelect') || 'default';
+        var filter = state.currentFilter;
+
+        // Filtrage
+        var filtered = [];
+        for (var i = 0; i < books.length; i++) {
+            var b = books[i];
+
+            // Filtre statut
+            var matchFilter = filter === 'all'
+                || (filter === 'toRead' && b.status === 'toRead')
+                || (filter === 'read' && b.status === 'read')
+                || (filter === 'oneShot' && (!b.series || !b.series.trim()))
+                || (filter === 'series' && b.series && b.series.trim());
+
+            // Filtre recherche
+            var matchSearch = !query
+                || b.title.toLowerCase().indexOf(query) !== -1
+                || b.author.toLowerCase().indexOf(query) !== -1
+                || (b.genre && b.genre.toLowerCase().indexOf(query) !== -1)
+                || (b.series && b.series.toLowerCase().indexOf(query) !== -1)
+                || (b.format && b.format.toLowerCase().indexOf(query) !== -1);
+
+            if (matchFilter && matchSearch) filtered.push(b);
         }
-    }
-    closeRatingModal();
-}
 
-function pickRandomBook() {
-    var gf = document.getElementById('randomGenreFilter').value;
-    var cands = [];
-    for (var i = 0; i < books.length; i++) {
-        if (books[i].status === 'toRead' && (gf === 'all' || books[i].genre === gf)) cands.push(books[i]);
-    }
-    var rd = document.getElementById('randomResult');
-    var btn = document.getElementById('randomBtn');
-    if (!cands.length) { rd.innerHTML = '<div class="random-card"><h3>😅 Aucun livre à lire !</h3></div>'; return; }
-    btn.disabled = true; btn.textContent = '🎰 Sélection...';
-    var spins = 0;
-    var iv = setInterval(function () {
-        var r = cands[Math.floor(Math.random() * cands.length)];
-        rd.innerHTML = '<div class="random-card spinning"><h3>' + r.title + '</h3><p class="author">par ' + r.author + '</p></div>';
-        spins++;
-        if (spins >= 15) {
-            clearInterval(iv);
-            var ch = cands[Math.floor(Math.random() * cands.length)];
-            rd.innerHTML = '<div class="random-card"><h3>🎉 ' + ch.title + '</h3><p class="author">par ' + ch.author + '</p><span class="genre-tag">' + ch.genre + '</span>' +
-                (ch.series ? '<br><span class="saga-tag">📖 ' + ch.series + (ch.tome ? ' - T' + ch.tome : '') + '</span>' : '') + '</div>';
-            btn.disabled = false; btn.textContent = '🎰 Choisir au hasard';
-            showToast('🎲 "' + ch.title + '" choisi !');
-        }
-    }, 100);
-}
-
-function updateRandomGenreFilter() {
-    var s = document.getElementById('randomGenreFilter');
-    if (!s) return;
-    var genres = [];
-    for (var i = 0; i < books.length; i++) {
-        if (books[i].status === 'toRead' && genres.indexOf(books[i].genre) === -1) genres.push(books[i].genre);
-    }
-    s.innerHTML = '<option value="all">Tous</option>';
-    for (var j = 0; j < genres.length; j++) s.innerHTML += '<option value="' + genres[j] + '">' + genres[j] + '</option>';
-}
-
-function addExternal(e) {
-    e.preventDefault();
-    var title = document.getElementById('extTitle').value.trim();
-    var author = document.getElementById('extAuthor').value.trim();
-    var genre = document.getElementById('extGenre').value;
-    var source = document.getElementById('extSource').value;
-    var series = document.getElementById('extSeries').value.trim();
-    var tome = parseInt(document.getElementById('extTome').value) || null;
-    var status = document.getElementById('extStatus').value;
-    var notes = document.getElementById('extNotes').value.trim();
-    var wantToBuy = document.getElementById('extWantToBuy').checked;
-    if (!title || !author) return;
-
-    var extId = Date.now();
-    external.push({
-        id: extId, title: title, author: author, genre: genre, source: source,
-        series: series || null, tome: tome, status: status, notes: notes,
-        wantToBuy: wantToBuy, rating: 0, review: '',
-        dateAdded: new Date().toLocaleDateString('fr-FR')
-    });
-
-    if (wantToBuy) {
-        var exists = false;
-        for (var i = 0; i < wishlist.length; i++) {
-            if (wishlist[i].title.toLowerCase() === title.toLowerCase() && wishlist[i].author.toLowerCase() === author.toLowerCase()) {
-                exists = true; break;
-            }
-        }
-        if (!exists) {
-            wishlist.push({
-                id: Date.now() + 1, title: title, author: author, genre: genre,
-                format: 'Broché', price: 0, priority: 2,
-                notes: notes ? ('Vient de "empruntés" : ' + notes) : 'Vient de "empruntés"',
-                series: series || null, tome: tome, status: 'toBuy',
-                dateAdded: new Date().toLocaleDateString('fr-FR'), dateBought: null,
-                fromExternal: extId
-            });
-            saveWishlist();
-        }
-    }
-
-    saveExternal(); renderAll();
-    document.getElementById('addExtForm').reset();
-    if (wantToBuy) showToast('📖 "' + title + '" ajouté + 🛒 wishlist !');
-    else showToast('📖 "' + title + '" ajouté !');
-}
-
-function renderExternal() {
-    var container = document.getElementById('externalList');
-    if (!container) return;
-    var query = document.getElementById('extSearchInput').value.toLowerCase();
-    var sortBy = document.getElementById('extSortSelect').value;
-
-    var filtered = [];
-    for (var i = 0; i < external.length; i++) {
-        var e = external[i];
-        var mf = extFilter === 'all' ||
-            (extFilter === 'read' && e.status === 'read') ||
-            (extFilter === 'reading' && e.status === 'reading') ||
-            (extFilter === 'toRead' && e.status === 'toRead') ||
-            (extFilter === 'wantToBuy' && e.wantToBuy);
-        var ms = e.title.toLowerCase().indexOf(query) !== -1 || e.author.toLowerCase().indexOf(query) !== -1 ||
-            (e.genre && e.genre.toLowerCase().indexOf(query) !== -1) ||
-            (e.series && e.series.toLowerCase().indexOf(query) !== -1) ||
-            (e.source && e.source.toLowerCase().indexOf(query) !== -1);
-        if (mf && ms) filtered.push(e);
-    }
-
-    filtered.sort(function (a, b) {
-        switch (sortBy) {
-            case 'title': return a.title.localeCompare(b.title);
-            case 'author': return a.author.localeCompare(b.author);
-            case 'rating': return b.rating - a.rating;
-            case 'source': return (a.source || '').localeCompare(b.source || '');
-            case 'dateAdded': return b.id - a.id;
-            default:
-                var order = { 'reading': 0, 'toRead': 1, 'read': 2 };
-                return order[a.status] - order[b.status];
-        }
-    });
-
-    var readCount = 0, ratedSum = 0, ratedCount = 0, toBuyCount = 0;
-    for (var s = 0; s < external.length; s++) {
-        if (external[s].status === 'read') readCount++;
-        if (external[s].rating > 0) { ratedSum += external[s].rating; ratedCount++; }
-        if (external[s].wantToBuy) toBuyCount++;
-    }
-    document.getElementById('extTotal').textContent = external.length;
-    document.getElementById('extRead').textContent = readCount;
-    document.getElementById('extToBuy').textContent = toBuyCount;
-    document.getElementById('extAvgRating').textContent = ratedCount > 0 ? (ratedSum / ratedCount).toFixed(1) : '-';
-
-    if (!filtered.length) {
-        container.innerHTML = '<div class="empty-state"><span class="emoji">📖</span><p>Aucun livre externe.</p></div>';
-        return;
-    }
-
-    var statusLabels = { 'read': '✅ Lu', 'reading': '📖 En cours', 'toRead': '📥 À lire' };
-    var statusClasses = { 'read': 'ext-read', 'reading': 'ext-reading', 'toRead': 'ext-toRead' };
-    var html = '';
-
-    for (var j = 0; j < filtered.length; j++) {
-        var it = filtered[j];
-        var starsH = it.rating > 0 ? '<div class="stars">' + '★'.repeat(it.rating) + '☆'.repeat(5 - it.rating) + '</div>' : '';
-        var reviewH = it.review ? '<div class="review">"' + it.review + '"</div>' : '';
-        var sourceIcon = SOURCE_ICONS[it.source] || '📦';
-        var sourceH = it.source ? '<span class="source-tag">' + sourceIcon + ' ' + it.source + '</span>' : '';
-        var seriesH = it.series ? '<span class="saga-tag">📖 ' + it.series + '</span>' : '';
-        var tomeH = it.tome ? '<span class="tome-tag">Tome ' + it.tome + '</span>' : '';
-        var wantH = it.wantToBuy ? '<span class="want-buy-badge">🛒 À acheter</span>' : '';
-        var sc = statusClasses[it.status];
-
-        html += '<div class="book-card ' + sc + '">' +
-            '<button class="delete-icon" onclick="deleteExternal(' + it.id + ')">🗑</button>' +
-            '<h3>' + it.title + '</h3><p class="author">par ' + it.author + '</p>' +
-            '<div class="wish-tags">' +
-            '<span class="genre-tag">' + it.genre + '</span>' +
-            '<span class="status-badge ' + sc + '">' + statusLabels[it.status] + '</span>' +
-            sourceH + tomeH + seriesH + wantH +
-            '</div>' + starsH + reviewH +
-            (it.notes ? '<p class="wish-notes">📝 ' + it.notes + '</p>' : '') +
-            '<div class="actions">' +
-            (it.status !== 'read' ? '<button class="btn-mark-read" onclick="markExtAsRead(' + it.id + ')">✅ Lu</button>' : '<button class="btn-unread" onclick="markExtAsUnread(' + it.id + ')">📖 Pas lu</button>') +
-            (it.status === 'read' ? '<button class="btn-rate" onclick="openRatingExtModal(' + it.id + ')">⭐ ' + (it.rating > 0 ? 'Modifier' : 'Noter') + '</button>' : '') +
-            (it.status === 'toRead' ? '<button class="btn-status-ext" onclick="markExtAsReading(' + it.id + ')">📖 Commencer</button>' : '') +
-            '<button class="btn-want-buy" onclick="toggleExtWantBuy(' + it.id + ')">' + (it.wantToBuy ? '❌ Retirer wishlist' : '🛒 Ajouter wishlist') + '</button>' +
-            '</div></div>';
-    }
-    container.innerHTML = html;
-}
-
-function filterExt(f, btn) {
-    extFilter = f;
-    var btns = document.querySelectorAll('#page-external .filter-btn');
-    for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
-    if (btn) btn.classList.add('active');
-    renderExternal();
-}
-
-function markExtAsRead(id) {
-    for (var i = 0; i < external.length; i++) {
-        if (external[i].id === id) {
-            external[i].status = 'read';
-            saveExternal(); renderAll();
-            showToast('✅ Lu !');
-            var eid = id;
-            setTimeout(function () { openRatingExtModal(eid); }, 400);
-            return;
-        }
-    }
-}
-
-function markExtAsUnread(id) {
-    for (var i = 0; i < external.length; i++) {
-        if (external[i].id === id) {
-            external[i].status = 'toRead';
-            saveExternal(); renderAll();
-            showToast('📥 Remis à lire !');
-            return;
-        }
-    }
-}
-
-function markExtAsReading(id) {
-    for (var i = 0; i < external.length; i++) {
-        if (external[i].id === id) {
-            external[i].status = 'reading';
-            saveExternal(); renderAll();
-            showToast('📖 Lecture commencée !');
-            return;
-        }
-    }
-}
-
-function toggleExtWantBuy(id) {
-    for (var i = 0; i < external.length; i++) {
-        if (external[i].id === id) {
-            external[i].wantToBuy = !external[i].wantToBuy;
-            if (external[i].wantToBuy) {
-                var it = external[i];
-                var exists = false;
-                for (var j = 0; j < wishlist.length; j++) {
-                    if (wishlist[j].title.toLowerCase() === it.title.toLowerCase() && wishlist[j].author.toLowerCase() === it.author.toLowerCase()) {
-                        exists = true; break;
+        // Tri
+        filtered.sort(function (a, b) {
+            switch (sortBy) {
+                case 'title':     return a.title.localeCompare(b.title);
+                case 'author':    return a.author.localeCompare(b.author);
+                case 'rating':    return b.rating - a.rating;
+                case 'series':
+                    var sA = a.series || '\uffff', sB = b.series || '\uffff';
+                    if (sA !== sB) return sA.localeCompare(sB);
+                    return (a.tome || 999) - (b.tome || 999);
+                case 'dateAdded': return b.id - a.id;
+                default:
+                    if (a.status !== b.status) {
+                        return a.status === 'toRead' ? -1 : 1;
                     }
-                }
-                if (!exists) {
-                    wishlist.push({
-                        id: Date.now(), title: it.title, author: it.author, genre: it.genre,
-                        format: 'Broché', price: 0, priority: 2,
-                        notes: it.notes ? ('Vient de "empruntés" : ' + it.notes) : 'Vient de "empruntés"',
-                        series: it.series, tome: it.tome, status: 'toBuy',
-                        dateAdded: new Date().toLocaleDateString('fr-FR'), dateBought: null,
-                        fromExternal: it.id
-                    });
-                    saveWishlist();
-                    showToast('🛒 Ajouté à la wishlist !');
-                } else {
-                    showToast('✅ Déjà dans la wishlist !');
-                }
-            } else {
-                wishlist = wishlist.filter(function (w) { return w.fromExternal !== id; });
-                saveWishlist();
-                showToast('❌ Retiré de la wishlist !');
+                    return b.rating - a.rating;
             }
-            saveExternal(); renderAll();
+        });
+
+        if (!filtered.length) {
+            container.innerHTML = '<div class="empty-state"><span class="emoji">📭</span><p>Aucun livre trouvé.</p></div>';
             return;
         }
-    }
-}
 
-function deleteExternal(id) {
-    var item = null;
-    for (var i = 0; i < external.length; i++) { if (external[i].id === id) { item = external[i]; break; } }
-    if (item && confirm('Supprimer "' + item.title + '" ?')) {
-        external = external.filter(function (x) { return x.id !== id; });
-        wishlist = wishlist.filter(function (w) { return w.fromExternal !== id; });
-        saveExternal(); saveWishlist(); renderAll();
+        var parts = [];
+        for (var j = 0; j < filtered.length; j++) {
+            var bk = filtered[j];
+            var sc = bk.status === 'read' ? 'read' : 'to-read';
+            var sl = bk.status === 'read' ? '✅ Lu' : '📖 À lire';
+            var sagaH = bk.series ? '<span class="saga-tag">📖 ' + escapeHTML(bk.series) + '</span>' : '';
+            var tomeH = bk.tome ? '<span class="tome-tag">Tome ' + bk.tome + '</span>' : '';
+            var readingH = (bk.status === 'read') ? buildReadingHtml(bk) : '';
+
+            parts.push(
+                '<div class="book-card ' + sc + '">' +
+                '<button class="delete-icon" data-action="deleteBook" data-id="' + bk.id + '" type="button" aria-label="Supprimer">🗑</button>' +
+                '<h3>' + escapeHTML(bk.title) + '</h3>' +
+                '<p class="author">par ' + escapeHTML(bk.author) + '</p>' +
+                '<span class="genre-tag">' + escapeHTML(bk.genre || 'Roman') + '</span>' +
+                '<span class="status-badge ' + sc + '">' + sl + '</span>' +
+                getFormatHtml(bk.format) + tomeH + sagaH + readingH +
+                buildStarsHtml(bk.rating) + buildReviewHtml(bk.review) +
+                '<div class="actions">' +
+                (bk.status === 'toRead'
+                    ? '<button data-action="markRead" data-id="' + bk.id + '" class="btn-mark-read" type="button">✅ Lu</button>'
+                    : '<button data-action="markUnread" data-id="' + bk.id + '" class="btn-unread" type="button">📖 À lire</button>') +
+                (bk.status === 'read'
+                    ? '<button data-action="rateBook" data-id="' + bk.id + '" class="btn-rate" type="button">⭐ ' + (bk.rating > 0 ? 'Modifier note' : 'Noter') + '</button>'
+                    : '') +
+                '<button data-action="editBook" data-id="' + bk.id + '" class="btn-edit" type="button">✏️ Modifier</button>' +
+                '</div></div>'
+            );
+        }
+        container.innerHTML = parts.join('');
+    }
+
+    function filterBooks(f, btn) {
+        state.currentFilter = f;
+        var btns = document.querySelectorAll('#page-home .filter-btn');
+        for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+        if (btn) btn.classList.add('active');
+        renderBooks();
+    }
+
+    function markAsRead(id) {
+        var b = findById(books, id);
+        if (!b) return;
+        b.status = 'read';
+        b.dateRead = nowDateStr();
+        saveBooks();
+        renderAll();
+        showToast('✅ Lu !');
+        setTimeout(function () { openRatingModal(id); }, 400);
+    }
+
+    function markAsUnread(id) {
+        var b = findById(books, id);
+        if (!b) return;
+        b.status = 'toRead';
+        b.rating = 0;
+        b.review = '';
+        b.dateRead = null;
+        b.dateStart = null;
+        b.dateEnd = null;
+        saveBooks();
+        renderAll();
+        showToast('📖 Remis à lire !');
+    }
+
+    function deleteBook(id) {
+        var book = findById(books, id);
+        if (!book || !confirm('Supprimer "' + book.title + '" ?')) return;
+
+        books = removeById(books, id);
+
+        if (book.series) {
+            var key = getSeriesKey(book.series);
+            var hasOthers = false;
+            for (var i = 0; i < books.length; i++) {
+                if (books[i].series && getSeriesKey(books[i].series) === key) {
+                    hasOthers = true;
+                    break;
+                }
+            }
+            if (!hasOthers) delete sagasMeta[key];
+            saveSagasMeta();
+        }
+
+        saveBooks();
+        renderAll();
         showToast('🗑 Supprimé.');
     }
-}
 
-function openRatingExtModal(id) {
-    ratingExtBookId = id; selectedExtRating = 0;
-    var b = null;
-    for (var i = 0; i < external.length; i++) { if (external[i].id === id) { b = external[i]; break; } }
-    if (!b) return;
-    document.getElementById('modalExtBookTitle').textContent = b.title;
-    document.getElementById('extBookReview').value = b.review || '';
-    if (b.rating > 0) selectedExtRating = b.rating;
-    updateExtStarsDisplay();
-    document.getElementById('ratingExtModal').classList.add('active');
-}
+    // ============================================================
+    //  MODALE NOTATION (BIBLIO)
+    // ============================================================
+    function openRatingModal(id) {
+        state.ratingBookId = id;
+        state.selectedRating = 0;
+        var b = findById(books, id);
+        if (!b) return;
 
-function closeRatingExtModal() { document.getElementById('ratingExtModal').classList.remove('active'); }
-function setExtRating(n) { selectedExtRating = n; updateExtStarsDisplay(); }
-function updateExtStarsDisplay() {
-    var stars = document.querySelectorAll('#starsExtInput .star-btn');
-    for (var i = 0; i < stars.length; i++) stars[i].classList.toggle('active', i < selectedExtRating);
-}
-function confirmExtRating() {
-    if (!selectedExtRating) { showToast('⚠️ Sélectionne au moins 1 étoile !'); return; }
-    for (var i = 0; i < external.length; i++) {
-        if (external[i].id === ratingExtBookId) {
-            external[i].rating = selectedExtRating;
-            external[i].review = document.getElementById('extBookReview').value.trim();
-            saveExternal(); renderAll();
-            showToast('⭐ Noté ' + selectedExtRating + '/5 !');
-            break;
-        }
+        setText('modalBookTitle', b.title);
+        var rv = $('bookReview'); if (rv) rv.value = b.review || '';
+        var ds = $('bookDateStart'); if (ds) ds.value = b.dateStart || '';
+        var de = $('bookDateEnd'); if (de) de.value = b.dateEnd || '';
+
+        if (b.rating > 0) state.selectedRating = b.rating;
+        updateStarsDisplay();
+        calcReadingDays('book');
+        openModal('ratingModal');
     }
-    closeRatingExtModal();
-}
 
-function renderSagas() {
-    var container = document.getElementById('sagasList');
-    if (!container) return;
-    var query = document.getElementById('sagaSearchInput').value.toLowerCase();
-    var allSeries = getAllSeries();
-    var allKeys = Object.keys(allSeries);
-
-    var seriesList = [];
-    for (var i = 0; i < allKeys.length; i++) {
-        var s = allSeries[allKeys[i]];
-        if (s.name.toLowerCase().indexOf(query) !== -1 || s.author.toLowerCase().indexOf(query) !== -1) {
-            seriesList.push(s);
+    function updateStarsDisplay() {
+        var stars = document.querySelectorAll('#starsInput .star-btn');
+        for (var i = 0; i < stars.length; i++) {
+            stars[i].classList.toggle('active', i < state.selectedRating);
         }
     }
 
-    if (sagaFilter === 'completed') seriesList = seriesList.filter(function (s) { return s.isCompleted; });
-    else if (sagaFilter === 'inProgress') seriesList = seriesList.filter(function (s) { return s.isStarted && !s.isCompleted; });
-    else if (sagaFilter === 'notStarted') seriesList = seriesList.filter(function (s) { return !s.isStarted; });
+    function confirmRating() {
+        if (!state.selectedRating) { showToast('⚠️ Sélectionne au moins 1 étoile !'); return; }
 
-    var allValues = [];
-    for (var a = 0; a < allKeys.length; a++) allValues.push(allSeries[allKeys[a]]);
+        var b = findById(books, state.ratingBookId);
+        if (!b) return;
 
-    document.getElementById('sagasTotalStat').textContent = allValues.length;
-    document.getElementById('sagasCompletedStat').textContent = allValues.filter(function (s) { return s.isCompleted; }).length;
-    document.getElementById('sagasInProgressStat').textContent = allValues.filter(function (s) { return s.isStarted && !s.isCompleted; }).length;
-    var totalT = 0; for (var t = 0; t < allValues.length; t++) totalT += allValues[t].ownedCount;
-    document.getElementById('sagasTotalTomes').textContent = totalT;
-    document.getElementById('sagasCount').textContent = allValues.length;
+        b.rating = state.selectedRating;
+        b.review = getVal('bookReview');
+        b.dateStart = getRawVal('bookDateStart') || null;
+        b.dateEnd = getRawVal('bookDateEnd') || null;
 
-    if (!seriesList.length) {
-        container.innerHTML = '<div class="empty-state"><span class="emoji">📚</span><p>Aucune saga trouvée.</p></div>';
-        return;
+        saveBooks();
+        renderAll();
+        showToast('⭐ Noté ' + state.selectedRating + '/5 !');
+        closeModal('ratingModal');
     }
 
-    seriesList.sort(function (a, b) {
-        if (a.isCompleted && !b.isCompleted) return 1;
-        if (!a.isCompleted && b.isCompleted) return -1;
-        return b.progress - a.progress;
-    });
-
-    var html = '';
-    for (var si = 0; si < seriesList.length; si++) {
-        var sg = seriesList[si];
-        var tomesHtml = '';
-        for (var ti = 0; ti < sg.books.length; ti++) {
-            var bk = sg.books[ti];
-            tomesHtml += '<div class="tome-item"><span class="tome-title">' + (bk.tome ? 'T' + bk.tome + ' — ' : '') + bk.title + '</span>' +
-                (bk.rating > 0 ? '<span class="tome-rating">' + '★'.repeat(bk.rating) + '</span>' : '') +
-                '<span class="tome-status ' + (bk.status === 'read' ? 'read-tome' : 'unread-tome') + '">' + (bk.status === 'read' ? '✅' : '📖') + '</span></div>';
-        }
-
-        var ownedNums = [];
-        for (var oi = 0; oi < sg.books.length; oi++) { if (sg.books[oi].tome) ownedNums.push(sg.books[oi].tome); }
-        var missingTomes = [];
-        if (sg.totalTomes > 0) { for (var mi = 1; mi <= sg.totalTomes; mi++) { if (ownedNums.indexOf(mi) === -1) missingTomes.push(mi); } }
-
-        var missingHtml = '';
-        if (missingTomes.length > 0) {
-            var missingItems = '';
-            for (var mj = 0; mj < missingTomes.length; mj++) {
-                missingItems += '<div class="tome-item missing-tome"><span class="tome-title missing-title">T' + missingTomes[mj] + ' — ???</span><span class="tome-status missing-status">❌ Manquant</span></div>';
+    // ============================================================
+    //  RANDOM BOOK
+    // ============================================================
+    function pickRandomBook() {
+        var gf = getRawVal('randomGenreFilter');
+        var cands = [];
+        for (var i = 0; i < books.length; i++) {
+            if (books[i].status === 'toRead' && (gf === 'all' || books[i].genre === gf)) {
+                cands.push(books[i]);
             }
-            missingHtml = '<div class="missing-section"><div class="missing-header"><span class="missing-icon">⚠️</span><span class="missing-label">' + missingTomes.length + ' tome' + (missingTomes.length > 1 ? 's' : '') + ' manquant' + (missingTomes.length > 1 ? 's' : '') + '</span></div><div class="missing-list">' + missingItems + '</div></div>';
         }
 
-        var compIcon = '';
-        if (sg.isCompleted) compIcon = '<span class="saga-complete-badge">🎉 Terminée !</span>';
-        else if (missingTomes.length === 0 && sg.ownedCount >= sg.totalTomes) compIcon = '<span class="saga-all-owned-badge">📚 Tous possédés</span>';
+        var rd = $('randomResult');
+        var btn = $('randomBtn');
+        if (!rd || !btn) return;
 
-        var ratedBooks = sg.books.filter(function (b) { return b.rating > 0; });
-        var avg = ratedBooks.length > 0 ? (ratedBooks.reduce(function (s, b) { return s + b.rating; }, 0) / ratedBooks.length).toFixed(1) : null;
-        var missingCount = sg.totalTomes - sg.ownedCount;
+        if (!cands.length) {
+            rd.innerHTML = '<div class="random-card"><h3>😅 Aucun livre à lire !</h3></div>';
+            return;
+        }
 
-        html += '<div class="saga-card ' + (sg.isCompleted ? 'saga-completed' : '') + ' ' + (missingTomes.length > 0 ? 'saga-has-missing' : '') + '">' +
-            '<h3>📖 ' + sg.name + '</h3><p class="saga-author">par ' + sg.author + '</p><span class="genre-tag">' + sg.genre + '</span>' + compIcon +
-            '<div class="saga-info"><span>📚 ' + sg.ownedCount + '/' + sg.totalTomes + ' possédés</span><span>✅ ' + sg.readCount + ' lus</span>' +
-            (missingCount > 0 ? '<span class="missing-count-tag">❌ ' + missingCount + ' manquants</span>' : '') +
-            (avg ? '<span>⭐ ' + avg + '/5</span>' : '') + '</div>' +
-            '<p class="progress-text">' + sg.progress + '% lu ' + (sg.isCompleted ? '🎉' : '') + '</p>' +
-            '<div class="progress-bar"><div class="progress-fill" style="width:' + Math.min(sg.progress, 100) + '%"></div></div>' +
-            '<div class="tomes-list"><p class="tomes-section-title">📗 Tomes possédés (' + sg.ownedCount + ')</p>' + tomesHtml + '</div>' +
-            missingHtml +
-            '<div class="actions"><button class="btn-edit-saga" onclick="openEditSagaModal(\'' + sg.key + '\')">✏️ Modifier tomes prévus</button></div></div>';
-    }
-    container.innerHTML = html;
-}
+        btn.disabled = true;
+        btn.textContent = '🎰 Sélection...';
+        var spins = 0;
 
-function filterSagas(f, btn) {
-    sagaFilter = f;
-    var btns = document.querySelectorAll('#page-sagas .filter-btn');
-    for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
-    if (btn) btn.classList.add('active');
-    renderSagas();
-}
+        var iv = setInterval(function () {
+            var r = cands[Math.floor(Math.random() * cands.length)];
+            rd.innerHTML = '<div class="random-card spinning"><h3>' + escapeHTML(r.title) + '</h3><p class="author">par ' + escapeHTML(r.author) + '</p></div>';
+            spins++;
 
-function openEditSagaModal(key) {
-    editSagaKey = key;
-    var allSeries = getAllSeries();
-    var s = allSeries[key];
-    if (!s) return;
-    document.getElementById('editSagaTitle').textContent = s.name;
-    document.getElementById('editSagaTotalTomes').value = s.totalTomes;
-    document.getElementById('editSagaModal').classList.add('active');
-}
-
-function closeEditSagaModal() { document.getElementById('editSagaModal').classList.remove('active'); editSagaKey = null; }
-
-function confirmEditSaga() {
-    var val = parseInt(document.getElementById('editSagaTotalTomes').value);
-    if (!val || val < 1) { showToast('⚠️ Nombre invalide !'); return; }
-    if (!sagasMeta[editSagaKey]) sagasMeta[editSagaKey] = {};
-    sagasMeta[editSagaKey].totalTomes = val;
-    saveSagasMeta(); renderAll();
-    showToast('✏️ Mise à jour !');
-    closeEditSagaModal();
-}
-
-function renderAuthors() {
-    var container = document.getElementById('authorsList');
-    if (!container) return;
-    var query = document.getElementById('authorSearchInput').value.toLowerCase();
-    var sortBy = document.getElementById('authorSortSelect').value;
-
-    var authorMap = {};
-    for (var i = 0; i < books.length; i++) {
-        var key = books[i].author.trim();
-        if (!authorMap[key]) authorMap[key] = { name: key, books: [], extBooks: [] };
-        authorMap[key].books.push(books[i]);
-    }
-    for (var i2 = 0; i2 < external.length; i2++) {
-        var key2 = external[i2].author.trim();
-        if (!authorMap[key2]) authorMap[key2] = { name: key2, books: [], extBooks: [] };
-        authorMap[key2].extBooks.push(external[i2]);
+            if (spins >= 15) {
+                clearInterval(iv);
+                var ch = cands[Math.floor(Math.random() * cands.length)];
+                rd.innerHTML =
+                    '<div class="random-card">' +
+                    '<h3>🎉 ' + escapeHTML(ch.title) + '</h3>' +
+                    '<p class="author">par ' + escapeHTML(ch.author) + '</p>' +
+                    '<span class="genre-tag">' + escapeHTML(ch.genre) + '</span>' +
+                    (ch.series ? '<br><span class="saga-tag">📖 ' + escapeHTML(ch.series) + (ch.tome ? ' - T' + ch.tome : '') + '</span>' : '') +
+                    '</div>';
+                btn.disabled = false;
+                btn.textContent = '🎰 Choisir au hasard';
+                showToast('🎲 "' + ch.title + '" choisi !');
+            }
+        }, 100);
     }
 
-    var allSeries = getAllSeries();
-    var authors = [];
-    var aKeys = Object.keys(authorMap);
-    for (var j = 0; j < aKeys.length; j++) {
-        var a = authorMap[aKeys[j]];
-        if (a.name.toLowerCase().indexOf(query) === -1) continue;
-        var totalBooks = a.books.length + a.extBooks.length;
-        var readB = 0, ratingSum = 0, ratedCount = 0;
-        for (var k = 0; k < a.books.length; k++) {
-            if (a.books[k].status === 'read') readB++;
-            if (a.books[k].rating > 0) { ratingSum += a.books[k].rating; ratedCount++; }
+    function updateRandomGenreFilter() {
+        var s = $('randomGenreFilter');
+        if (!s) return;
+        var genres = [];
+        for (var i = 0; i < books.length; i++) {
+            if (books[i].status === 'toRead' && genres.indexOf(books[i].genre) === -1) {
+                genres.push(books[i].genre);
+            }
         }
-        for (var k2 = 0; k2 < a.extBooks.length; k2++) {
-            if (a.extBooks[k2].status === 'read') readB++;
-            if (a.extBooks[k2].rating > 0) { ratingSum += a.extBooks[k2].rating; ratedCount++; }
+        var html = '<option value="all">Tous</option>';
+        for (var j = 0; j < genres.length; j++) {
+            html += '<option value="' + escapeHTML(genres[j]) + '">' + escapeHTML(genres[j]) + '</option>';
         }
-        var aSeries = [];
-        var sKeys = Object.keys(allSeries);
-        for (var s = 0; s < sKeys.length; s++) {
-            if (allSeries[sKeys[s]].author.trim() === a.name) aSeries.push(allSeries[sKeys[s]]);
-        }
-        authors.push({
-            name: a.name, books: a.books, extBooks: a.extBooks, totalBooks: totalBooks,
-            readBooks: readB, avgRating: ratedCount > 0 ? ratingSum / ratedCount : 0,
-            authorSeries: aSeries
+        s.innerHTML = html;
+    }
+
+    // ============================================================
+    //  LIVRES EXTERNES
+    // ============================================================
+    function addExternal(e) {
+        e.preventDefault();
+        var title = getVal('extTitle');
+        var author = getVal('extAuthor');
+        if (!title || !author) { showToast('⚠️ Titre et auteur requis !'); return; }
+
+        var genre = getRawVal('extGenre');
+        var source = getRawVal('extSource');
+        var series = getVal('extSeries');
+        var tome = parseInt(getRawVal('extTome')) || null;
+        var status = getRawVal('extStatus');
+        var notes = getVal('extNotes');
+        var wtb = $('extWantToBuy');
+        var wantToBuy = wtb ? wtb.checked : false;
+
+        var extId = nowTimestamp();
+        external.push({
+            id: extId, title: title, author: author, genre: genre, source: source,
+            series: series || null, tome: tome, status: status, notes: notes,
+            wantToBuy: wantToBuy, rating: 0, review: '',
+            dateAdded: nowDateStr(), dateStart: null, dateEnd: null
         });
-    }
 
-    authors.sort(function (a, b) {
-        switch (sortBy) {
-            case 'name': return a.name.localeCompare(b.name);
-            case 'rating': return b.avgRating - a.avgRating;
-            case 'read': return b.readBooks - a.readBooks;
-            default: return b.totalBooks - a.totalBooks;
-        }
-    });
-
-    document.getElementById('authorsTotal').textContent = authors.length;
-    if (authors.length > 0) {
-        var sorted = authors.slice().sort(function (a, b) { return b.totalBooks - a.totalBooks; });
-        document.getElementById('authorTopName').textContent = sorted[0].name.length > 15 ? sorted[0].name.substring(0, 15) + '…' : sorted[0].name;
-        document.getElementById('authorTopCount').textContent = sorted[0].totalBooks;
-    } else {
-        document.getElementById('authorTopName').textContent = '-';
-        document.getElementById('authorTopCount').textContent = '0';
-    }
-
-    if (!authors.length) {
-        container.innerHTML = '<div class="empty-state"><span class="emoji">✍️</span><p>Aucun auteur trouvé.</p></div>';
-        return;
-    }
-
-    var html = '';
-    for (var ai = 0; ai < authors.length; ai++) {
-        var au = authors[ai];
-        var booksHtml = '';
-        var allBooksList = [];
-        for (var b1 = 0; b1 < au.books.length; b1++) allBooksList.push({ book: au.books[b1], external: false });
-        for (var b2 = 0; b2 < au.extBooks.length; b2++) allBooksList.push({ book: au.extBooks[b2], external: true });
-        allBooksList.sort(function (x, y) { return x.book.title.localeCompare(y.book.title); });
-
-        for (var bi = 0; bi < allBooksList.length; bi++) {
-            var bkObj = allBooksList[bi];
-            var bk = bkObj.book;
-            var statusCls = bkObj.external ? 'ab-ext' : (bk.status === 'read' ? 'ab-read' : 'ab-toread');
-            var statusIcon = bkObj.external ? '📖' : (bk.status === 'read' ? '✅' : '📖');
-            var extLabel = bkObj.external ? ' (externe)' : '';
-            booksHtml += '<div class="author-book-item"><span class="ab-title">' + bk.title +
-                (bk.tome ? ' (T' + bk.tome + ')' : '') + (bk.series ? ' — ' + bk.series : '') + extLabel +
-                '</span><span class="ab-status ' + statusCls + '">' + statusIcon + '</span>' +
-                (bk.rating > 0 ? '<span class="ab-rating">' + '★'.repeat(bk.rating) + '</span>' : '') + '</div>';
+        if (wantToBuy) {
+            addToWishlistFromExternal(extId, title, author, genre, series, tome, notes);
         }
 
-        var seriesHtml = '';
-        if (au.authorSeries.length > 0) {
-            var parts = [];
-            for (var si = 0; si < au.authorSeries.length; si++) {
-                parts.push(au.authorSeries[si].name + ' (' + au.authorSeries[si].readCount + '/' + au.authorSeries[si].totalTomes + ')');
+        saveExternal();
+        renderAll();
+        var form = $('addExtForm');
+        if (form) form.reset();
+        showToast(wantToBuy ? '📖 "' + title + '" ajouté + 🛒 wishlist !' : '📖 "' + title + '" ajouté !');
+    }
+
+    function addToWishlistFromExternal(extId, title, author, genre, series, tome, notes) {
+        // Vérifier doublon
+        for (var i = 0; i < wishlist.length; i++) {
+            if (wishlist[i].title.toLowerCase() === title.toLowerCase() &&
+                wishlist[i].author.toLowerCase() === author.toLowerCase()) {
+                return; // Déjà présent
             }
-            seriesHtml = '<p class="author-series">📖 Sagas : ' + parts.join(', ') + '</p>';
         }
-        var uid = 'au' + ai + '_' + Math.random().toString(36).substr(2, 5);
-
-        html += '<div class="author-card"><h3>✍️ ' + au.name + '</h3>' +
-            '<div class="author-stats">' +
-            '<div class="author-stat"><span class="author-stat-num">' + au.totalBooks + '</span><span class="author-stat-label">Livres</span></div>' +
-            '<div class="author-stat"><span class="author-stat-num">' + au.readBooks + '</span><span class="author-stat-label">Lus</span></div>' +
-            '<div class="author-stat"><span class="author-stat-num">' + (au.avgRating > 0 ? au.avgRating.toFixed(1) + '⭐' : '-') + '</span><span class="author-stat-label">Note</span></div>' +
-            '<div class="author-stat"><span class="author-stat-num">' + au.authorSeries.length + '</span><span class="author-stat-label">Sagas</span></div>' +
-            '</div>' + seriesHtml +
-            (au.totalBooks > 0 ? '<button class="toggle-books-btn" onclick="toggleAuthorBooks(\'' + uid + '\',this)">📚 Voir les ' + au.totalBooks + ' livres</button><div class="author-books-container" id="' + uid + '">' + booksHtml + '</div>' : '') +
-            '</div>';
-    }
-    container.innerHTML = html;
-}
-
-function toggleAuthorBooks(uid, btn) {
-    var c = document.getElementById(uid);
-    if (!c) return;
-    var exp = c.classList.toggle('expanded');
-    btn.textContent = exp ? '📚 Masquer' : '📚 Voir les livres';
-}
-
-function addWishlistItem(e) {
-    e.preventDefault();
-    var title = document.getElementById('wishTitle').value.trim();
-    var author = document.getElementById('wishAuthor').value.trim();
-    var genre = document.getElementById('wishGenre').value;
-    var format = document.getElementById('wishFormat').value;
-    var price = parseFloat(document.getElementById('wishPrice').value) || 0;
-    var priority = parseInt(document.getElementById('wishPriority').value);
-    var notes = document.getElementById('wishNotes').value.trim();
-    var series = document.getElementById('wishSeries').value.trim();
-    var tome = parseInt(document.getElementById('wishTome').value) || null;
-    if (!title || !author) return;
-
-    wishlist.push({
-        id: Date.now(), title: title, author: author, genre: genre, format: format,
-        price: price, priority: priority, notes: notes,
-        series: series || null, tome: tome,
-        status: 'toBuy', dateAdded: new Date().toLocaleDateString('fr-FR'), dateBought: null
-    });
-    saveWishlist(); renderWishlist(); updateStats(); updateWishSeriesSuggestions();
-    document.getElementById('addWishlistForm').reset();
-    showToast('🛒 "' + title + '" ajouté !');
-}
-
-function renderWishlist() {
-    var container = document.getElementById('wishlistList');
-    if (!container) return;
-    var query = document.getElementById('wishSearchInput').value.toLowerCase();
-
-    var filtered = [];
-    for (var i = 0; i < wishlist.length; i++) {
-        var it = wishlist[i];
-        var mf = wishlistFilter === 'all' || (wishlistFilter === 'toBuy' && it.status === 'toBuy') || (wishlistFilter === 'bought' && it.status === 'bought');
-        var ms = it.title.toLowerCase().indexOf(query) !== -1 || it.author.toLowerCase().indexOf(query) !== -1 ||
-            (it.genre && it.genre.toLowerCase().indexOf(query) !== -1) ||
-            (it.series && it.series.toLowerCase().indexOf(query) !== -1) ||
-            (it.format && it.format.toLowerCase().indexOf(query) !== -1);
-        if (mf && ms) filtered.push(it);
+        wishlist.push({
+            id: nowTimestamp() + 1, title: title, author: author, genre: genre,
+            format: 'Broché', price: 0, priority: 2,
+            notes: notes ? ('Vient de "empruntés" : ' + notes) : 'Vient de "empruntés"',
+            series: series || null, tome: tome, status: 'toBuy',
+            dateAdded: nowDateStr(), dateBought: null,
+            fromExternal: extId
+        });
+        saveWishlist();
     }
 
-    filtered.sort(function (a, b) {
-        if (a.status === 'toBuy' && b.status === 'bought') return -1;
-        if (a.status === 'bought' && b.status === 'toBuy') return 1;
-        return b.priority - a.priority;
-    });
+    function renderExternal() {
+        var container = $('externalList');
+        if (!container) return;
 
-    if (!filtered.length) {
-        container.innerHTML = '<div class="empty-state"><span class="emoji">🛒</span><p>Aucun livre dans la wishlist.</p></div>';
-        return;
-    }
+        var query = getVal('extSearchInput').toLowerCase();
+        var sortBy = getRawVal('extSortSelect') || 'default';
+        var filter = state.extFilter;
 
-    var pl = { 3: '🔴 Haute', 2: '🟡 Moyenne', 1: '🟢 Basse' };
-    var pc = { 3: 'high', 2: 'medium', 1: 'low' };
-    var html = '';
+        // Filtrage
+        var filtered = [];
+        for (var i = 0; i < external.length; i++) {
+            var e = external[i];
+            var matchFilter = filter === 'all'
+                || (filter === 'returned' && e.status === 'returned')
+                || (filter === 'given' && e.status === 'given')
+                || (filter === 'kept' && e.status === 'kept')
+                || (filter === 'wantToBuy' && e.wantToBuy);
 
-    for (var j = 0; j < filtered.length; j++) {
-        var it = filtered[j];
-        var sc = it.status === 'bought' ? 'wish-bought' : 'wish-to-buy';
-        var sl = it.status === 'bought' ? '✅ Acheté' : '📋 À acheter';
-        var formatH = getFormatHtml(it.format);
-        var seriesH = it.series ? '<span class="saga-tag">📖 ' + it.series + '</span>' : '';
-        var tomeH = it.tome ? '<span class="tome-tag">Tome ' + it.tome + '</span>' : '';
+            var matchSearch = !query
+                || e.title.toLowerCase().indexOf(query) !== -1
+                || e.author.toLowerCase().indexOf(query) !== -1
+                || (e.genre && e.genre.toLowerCase().indexOf(query) !== -1)
+                || (e.series && e.series.toLowerCase().indexOf(query) !== -1)
+                || (e.source && e.source.toLowerCase().indexOf(query) !== -1);
 
-        html += '<div class="book-card ' + sc + '"><button class="delete-icon" onclick="deleteWishlistItem(' + it.id + ')">🗑</button>' +
-            '<h3>' + it.title + '</h3><p class="author">par ' + it.author + '</p>' +
-            '<div class="wish-tags"><span class="genre-tag">' + (it.genre || 'Autre') + '</span>' +
-            '<span class="status-badge ' + sc + '">' + sl + '</span>' + formatH +
-            (it.price > 0 ? '<span class="price-tag">' + it.price.toFixed(2) + ' €</span>' : '') +
-            '<span class="priority-tag ' + pc[it.priority] + '">' + pl[it.priority] + '</span>' +
-            tomeH + seriesH + '</div>' +
-            (it.notes ? '<p class="wish-notes">📝 ' + it.notes + '</p>' : '') +
-            '<div class="actions">' +
-            (it.status === 'toBuy'
-                ? '<button class="btn-bought" onclick="markAsBought(' + it.id + ')">✅ Acheté</button><button class="btn-transfer" onclick="openTransferModal(' + it.id + ')">📚 → Biblio</button>'
-                : '<button class="btn-unbuy" onclick="markAsUnbought(' + it.id + ')">🛒 Remettre</button><button class="btn-transfer" onclick="openTransferModal(' + it.id + ')">📚 → Biblio</button>') +
-            '</div></div>';
-    }
-    container.innerHTML = html;
-}
-
-function filterWishlist(f, btn) {
-    wishlistFilter = f;
-    var btns = document.querySelectorAll('#page-wishlist .filter-btn');
-    for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
-    if (btn) btn.classList.add('active');
-    renderWishlist();
-}
-
-function markAsBought(id) {
-    for (var i = 0; i < wishlist.length; i++) {
-        if (wishlist[i].id === id) {
-            wishlist[i].status = 'bought'; wishlist[i].dateBought = new Date().toLocaleDateString('fr-FR');
-            saveWishlist(); renderWishlist(); updateStats();
-            showToast('✅ Acheté !'); return;
+            if (matchFilter && matchSearch) filtered.push(e);
         }
-    }
-}
 
-function markAsUnbought(id) {
-    for (var i = 0; i < wishlist.length; i++) {
-        if (wishlist[i].id === id) {
-            wishlist[i].status = 'toBuy'; wishlist[i].dateBought = null;
-            saveWishlist(); renderWishlist(); updateStats();
-            showToast('🛒 Remis !'); return;
-        }
-    }
-}
-
-function deleteWishlistItem(id) {
-    var item = null;
-    for (var i = 0; i < wishlist.length; i++) { if (wishlist[i].id === id) { item = wishlist[i]; break; } }
-    if (item && confirm('Supprimer "' + item.title + '" ?')) {
-        if (item.fromExternal) {
-            for (var e = 0; e < external.length; e++) {
-                if (external[e].id === item.fromExternal) { external[e].wantToBuy = false; break; }
+        // Tri
+        filtered.sort(function (a, b) {
+            switch (sortBy) {
+                case 'title':     return a.title.localeCompare(b.title);
+                case 'author':    return a.author.localeCompare(b.author);
+                case 'rating':    return b.rating - a.rating;
+                case 'source':    return (a.source || '').localeCompare(b.source || '');
+                case 'dateAdded': return b.id - a.id;
+                default:
+                    var order = { 'returned': 0, 'given': 1, 'kept': 2 };
+                    return (order[a.status] || 99) - (order[b.status] || 99);
             }
-            saveExternal();
+        });
+
+        // Stats externes (calculées ici car le container est sur la page)
+        updateExtStats();
+
+        if (!filtered.length) {
+            container.innerHTML = '<div class="empty-state"><span class="emoji">📖</span><p>Aucun livre externe.</p></div>';
+            return;
         }
-        wishlist = wishlist.filter(function (x) { return x.id !== id; });
-        saveWishlist(); renderAll();
-        showToast('🗑 Supprimé.');
+
+        var statusLabels = { 'returned': '📤 Retiré', 'given': '🎁 Rendu', 'kept': '📚 Laissé' };
+        var statusClasses = { 'returned': 'ext-returned', 'given': 'ext-given', 'kept': 'ext-kept' };
+        var parts = [];
+
+        for (var j = 0; j < filtered.length; j++) {
+            var it = filtered[j];
+            var sc = statusClasses[it.status] || 'ext-returned';
+            var sourceIcon = SOURCE_ICONS[it.source] || '📚';
+
+            parts.push(
+                '<div class="book-card ' + sc + '">' +
+                '<button class="delete-icon" data-action="deleteExt" data-id="' + it.id + '" type="button" aria-label="Supprimer">🗑</button>' +
+                '<h3>' + escapeHTML(it.title) + '</h3>' +
+                '<p class="author">par ' + escapeHTML(it.author) + '</p>' +
+                '<div class="wish-tags">' +
+                '<span class="genre-tag">' + escapeHTML(it.genre) + '</span>' +
+                '<span class="status-badge ' + sc + '">' + (statusLabels[it.status] || '📖') + '</span>' +
+                (it.source ? '<span class="source-tag">' + sourceIcon + ' ' + escapeHTML(it.source) + '</span>' : '') +
+                (it.tome ? '<span class="tome-tag">Tome ' + it.tome + '</span>' : '') +
+                (it.series ? '<span class="saga-tag">📖 ' + escapeHTML(it.series) + '</span>' : '') +
+                (it.wantToBuy ? '<span class="want-buy-badge">🛒 À acheter</span>' : '') +
+                '</div>' +
+                buildReadingHtml(it) + buildStarsHtml(it.rating) + buildReviewHtml(it.review) +
+                (it.notes ? '<p class="wish-notes">📝 ' + escapeHTML(it.notes) + '</p>' : '') +
+                '<div class="actions">' +
+                '<button data-action="rateExt" data-id="' + it.id + '" class="btn-rate" type="button">⭐ ' + (it.rating > 0 ? 'Modifier note' : 'Noter') + '</button>' +
+                (it.status !== 'returned' ? '<button data-action="changeExtStatus" data-id="' + it.id + '" data-value="returned" class="btn-returned" type="button">📤 Retiré</button>' : '') +
+                (it.status !== 'given' ? '<button data-action="changeExtStatus" data-id="' + it.id + '" data-value="given" class="btn-given" type="button">🎁 Rendu</button>' : '') +
+                (it.status !== 'kept' ? '<button data-action="changeExtStatus" data-id="' + it.id + '" data-value="kept" class="btn-kept" type="button">📚 Laissé</button>' : '') +
+                '<button data-action="toggleExtBuy" data-id="' + it.id + '" class="btn-want-buy" type="button">' + (it.wantToBuy ? '❌ Retirer wishlist' : '🛒 Ajouter wishlist') + '</button>' +
+                '<button data-action="editExt" data-id="' + it.id + '" class="btn-edit" type="button">✏️ Modifier</button>' +
+                '</div></div>'
+            );
+        }
+        container.innerHTML = parts.join('');
     }
-}
 
-function openTransferModal(id) {
-    transferBookId = id;
-    var item = null;
-    for (var i = 0; i < wishlist.length; i++) { if (wishlist[i].id === id) { item = wishlist[i]; break; } }
-    if (!item) return;
-    document.getElementById('transferBookTitle').textContent = item.title + ' — ' + item.author;
-    document.getElementById('removeFromWishlist').checked = true;
-    document.getElementById('transferModal').classList.add('active');
-}
+    function updateExtStats() {
+        var ratedSum = 0, ratedCount = 0, toBuyCount = 0;
+        var returnedCount = 0, givenCount = 0, keptCount = 0, tomesCount = 0;
+        var extSeriesSet = {};
 
-function closeTransferModal() { document.getElementById('transferModal').classList.remove('active'); }
+        for (var i = 0; i < external.length; i++) {
+            var e = external[i];
+            if (e.status === 'returned') returnedCount++;
+            else if (e.status === 'given') givenCount++;
+            else if (e.status === 'kept') keptCount++;
+            if (e.rating > 0) { ratedSum += e.rating; ratedCount++; }
+            if (e.wantToBuy) toBuyCount++;
+            if (e.series && e.series.trim()) {
+                extSeriesSet[e.series.trim().toLowerCase()] = true;
+                if (e.tome) tomesCount++;
+            }
+        }
 
-function confirmTransfer() {
-    var item = null;
-    for (var i = 0; i < wishlist.length; i++) { if (wishlist[i].id === transferBookId) { item = wishlist[i]; break; } }
-    if (!item) return;
-    var exists = false;
-    for (var j = 0; j < books.length; j++) {
-        if (books[j].title.toLowerCase() === item.title.toLowerCase() && books[j].author.toLowerCase() === item.author.toLowerCase()) { exists = true; break; }
+        setText('extTotal', external.length);
+        setText('extToBuy', toBuyCount);
+        setText('extAvgRating', ratedCount > 0 ? (ratedSum / ratedCount).toFixed(1) : '-');
+        setText('extReturned', returnedCount);
+        setText('extGiven', givenCount);
+        setText('extKept', keptCount);
+        setText('extSagasCount', Object.keys(extSeriesSet).length);
+        setText('extTomesCount', tomesCount);
     }
-    if (exists) { showToast('⚠️ Déjà dans la biblio !'); closeTransferModal(); return; }
-    books.push({
-        id: Date.now(), title: item.title, author: item.author,
-        genre: item.genre || 'Autre', format: item.format || 'Broché',
-        series: item.series || null, tome: item.tome || null,
-        status: 'toRead', rating: 0, review: '',
-        dateAdded: new Date().toLocaleDateString('fr-FR'), dateRead: null
-    });
-    if (item.series) {
-        var key = getSeriesKey(item.series);
-        if (!sagasMeta[key]) sagasMeta[key] = {};
-        saveSagasMeta();
-    }
-    if (document.getElementById('removeFromWishlist').checked) {
-        wishlist = wishlist.filter(function (x) { return x.id !== transferBookId; });
-    } else {
-        item.status = 'bought'; item.dateBought = new Date().toLocaleDateString('fr-FR');
-    }
-    saveBooks(); saveWishlist(); renderAll();
-    showToast('📚 Transféré !');
-    closeTransferModal();
-}
 
-function updateStats() {
-    document.getElementById('totalBooks').textContent = books.length;
-    var toRead = 0, read = 0, rSum = 0, rCount = 0, oneShot = 0, broche = 0, poche = 0;
-    for (var i = 0; i < books.length; i++) {
-        if (books[i].status === 'toRead') toRead++;
-        if (books[i].status === 'read') read++;
-        if (books[i].rating > 0) { rSum += books[i].rating; rCount++; }
-        // One Shot (livres sans série)
-        if (!books[i].series || !books[i].series.trim()) oneShot++;
-        // Compteurs de format
-        if (books[i].format === 'Broché') broche++;
-        if (books[i].format === 'Poche') poche++;
+    function filterExt(f, btn) {
+        state.extFilter = f;
+        var btns = document.querySelectorAll('#page-external .filter-btn');
+        for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+        if (btn) btn.classList.add('active');
+        renderExternal();
     }
-    for (var e = 0; e < external.length; e++) {
-        if (external[e].rating > 0) { rSum += external[e].rating; rCount++; }
+
+    function changeExtStatus(id, newStatus) {
+        var item = findById(external, id);
+        if (!item) return;
+        item.status = newStatus;
+        saveExternal();
+        renderAll();
+        var labels = { 'returned': '📤 Retiré', 'given': '🎁 Rendu', 'kept': '📚 Laissé' };
+        showToast((labels[newStatus] || '✅') + ' !');
     }
-    var extReadCount = 0;
-    for (var ex = 0; ex < external.length; ex++) {
-        if (external[ex].status === 'read') extReadCount++;
-    }
-    document.getElementById('toReadBooks').textContent = toRead;
-    document.getElementById('readBooks').textContent = read;
-    document.getElementById('externalCount').textContent = external.length;
-    document.getElementById('totalReadGlobal').textContent = read + extReadCount;
-    document.getElementById('avgRating').textContent = rCount > 0 ? (rSum / rCount).toFixed(1) : '-';
 
-    // Compteur One Shot
-    var oneShotEl = document.getElementById('oneShotCount');
-    if (oneShotEl) oneShotEl.textContent = oneShot;
+    function toggleExtWantBuy(id) {
+        var item = findById(external, id);
+        if (!item) return;
 
-    // Compteurs de format
-    var brocheEl = document.getElementById('brocheCount');
-    if (brocheEl) brocheEl.textContent = broche;
-    var pocheEl = document.getElementById('pocheCount');
-    if (pocheEl) pocheEl.textContent = poche;
+        item.wantToBuy = !item.wantToBuy;
 
-    var wToBuy = 0, wBought = 0, budget = 0, spent = 0;
-    for (var j = 0; j < wishlist.length; j++) {
-        if (wishlist[j].status === 'toBuy') { wToBuy++; budget += wishlist[j].price || 0; }
-        if (wishlist[j].status === 'bought') { wBought++; spent += wishlist[j].price || 0; }
-    }
-    document.getElementById('wishlistCount').textContent = wToBuy;
-    document.getElementById('wishlistTotal').textContent = wToBuy;
-    document.getElementById('wishlistBought').textContent = wBought;
-    document.getElementById('wishlistBudget').textContent = budget.toFixed(2) + ' €';
-    document.getElementById('wishlistSpent').textContent = spent.toFixed(2) + ' €';
-}
-
-function showToast(msg) {
-    var ex = document.querySelector('.toast');
-    if (ex) ex.remove();
-    var t = document.createElement('div');
-    t.classList.add('toast');
-    t.textContent = msg;
-    document.body.appendChild(t);
-    setTimeout(function () { if (t.parentNode) t.remove(); }, 3000);
-}
-
-// FIREBASE
-document.addEventListener('firebaseReady', function () {
-    var auth = window.firebaseAuth;
-    window.firebaseOnAuthChanged(auth, function (user) {
-        if (user) {
-            currentUser = user;
-            showLoggedUI(user);
-            firebasePullData();
+        if (item.wantToBuy) {
+            addToWishlistFromExternal(item.id, item.title, item.author, item.genre, item.series, item.tome, item.notes);
+            showToast('🛒 Ajouté à la wishlist !');
         } else {
-            currentUser = null;
-            showNotLoggedUI();
+            wishlist = wishlist.filter(function (w) { return w.fromExternal !== id; });
+            saveWishlist();
+            showToast('❌ Retiré de la wishlist !');
         }
+
+        saveExternal();
+        renderAll();
+    }
+
+    function deleteExternal(id) {
+        var item = findById(external, id);
+        if (!item || !confirm('Supprimer "' + item.title + '" ?')) return;
+
+        external = removeById(external, id);
+        wishlist = wishlist.filter(function (w) { return w.fromExternal !== id; });
+        saveExternal();
+        saveWishlist();
+        renderAll();
+        showToast('🗑 Supprimé.');
+    }
+
+    // ============================================================
+    //  MODALE NOTATION (EXTERNE)
+    // ============================================================
+    function openRatingExtModal(id) {
+        state.ratingExtBookId = id;
+        state.selectedExtRating = 0;
+        var b = findById(external, id);
+        if (!b) return;
+
+        setText('modalExtBookTitle', b.title);
+        var rv = $('extBookReview'); if (rv) rv.value = b.review || '';
+        var ds = $('extDateStart'); if (ds) ds.value = b.dateStart || '';
+        var de = $('extDateEnd'); if (de) de.value = b.dateEnd || '';
+
+        if (b.rating > 0) state.selectedExtRating = b.rating;
+        updateExtStarsDisplay();
+        calcReadingDays('ext');
+        openModal('ratingExtModal');
+    }
+
+    function updateExtStarsDisplay() {
+        var stars = document.querySelectorAll('#starsExtInput .star-btn');
+        for (var i = 0; i < stars.length; i++) {
+            stars[i].classList.toggle('active', i < state.selectedExtRating);
+        }
+    }
+
+    function confirmExtRating() {
+        if (!state.selectedExtRating) { showToast('⚠️ Sélectionne au moins 1 étoile !'); return; }
+
+        var b = findById(external, state.ratingExtBookId);
+        if (!b) return;
+
+        b.rating = state.selectedExtRating;
+        b.review = getVal('extBookReview');
+        b.dateStart = getRawVal('extDateStart') || null;
+        b.dateEnd = getRawVal('extDateEnd') || null;
+
+        saveExternal();
+        renderAll();
+        showToast('⭐ Noté ' + state.selectedExtRating + '/5 !');
+        closeModal('ratingExtModal');
+    }
+
+    // ============================================================
+    //  SAGAS
+    // ============================================================
+    function renderSagas() {
+        var container = $('sagasList');
+        if (!container) return;
+
+        var query = getVal('sagaSearchInput').toLowerCase();
+        var allSeries = getAllSeries();
+        var allKeys = Object.keys(allSeries);
+
+        // Construire la liste
+        var seriesList = [];
+        for (var i = 0; i < allKeys.length; i++) {
+            var s = allSeries[allKeys[i]];
+            if (!query || s.name.toLowerCase().indexOf(query) !== -1 || s.author.toLowerCase().indexOf(query) !== -1) {
+                seriesList.push(s);
+            }
+        }
+
+        // Filtrage
+        var filter = state.sagaFilter;
+        if (filter === 'completed') seriesList = seriesList.filter(function (s) { return s.isCompleted; });
+        else if (filter === 'inProgress') seriesList = seriesList.filter(function (s) { return s.isStarted && !s.isCompleted; });
+        else if (filter === 'notStarted') seriesList = seriesList.filter(function (s) { return !s.isStarted; });
+
+        // Stats
+        var allValues = [];
+        for (var a = 0; a < allKeys.length; a++) allValues.push(allSeries[allKeys[a]]);
+
+        var completedCount = 0, inProgressCount = 0, totalTomes = 0;
+        for (var t = 0; t < allValues.length; t++) {
+            if (allValues[t].isCompleted) completedCount++;
+            else if (allValues[t].isStarted) inProgressCount++;
+            totalTomes += allValues[t].ownedCount;
+        }
+
+        setText('sagasTotalStat', allValues.length);
+        setText('sagasCompletedStat', completedCount);
+        setText('sagasInProgressStat', inProgressCount);
+        setText('sagasTotalTomes', totalTomes);
+        setText('sagasCount', allValues.length);
+
+        if (!seriesList.length) {
+            container.innerHTML = '<div class="empty-state"><span class="emoji">📚</span><p>Aucune saga trouvée.</p></div>';
+            return;
+        }
+
+        // Tri : en cours > pas commencées > terminées
+        seriesList.sort(function (a, b) {
+            if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
+            return b.progress - a.progress;
+        });
+
+        var parts = [];
+        for (var si = 0; si < seriesList.length; si++) {
+            var sg = seriesList[si];
+
+            // Tomes
+            var tomesHtml = '';
+            for (var ti = 0; ti < sg.books.length; ti++) {
+                var bk = sg.books[ti];
+                tomesHtml +=
+                    '<div class="tome-item">' +
+                    '<span class="tome-title">' + (bk.tome ? 'T' + bk.tome + ' — ' : '') + escapeHTML(bk.title) + '</span>' +
+                    (bk.rating > 0 ? '<span class="tome-rating">' + '★'.repeat(bk.rating) + '</span>' : '') +
+                    '<span class="tome-status ' + (bk.status === 'read' ? 'read-tome' : 'unread-tome') + '">' + (bk.status === 'read' ? '✅' : '📖') + '</span>' +
+                    '</div>';
+            }
+
+            // Tomes manquants
+            var ownedNums = [];
+            for (var oi = 0; oi < sg.books.length; oi++) { if (sg.books[oi].tome) ownedNums.push(sg.books[oi].tome); }
+
+            var missingTomes = [];
+            if (sg.totalTomes > 0) {
+                for (var mi = 1; mi <= sg.totalTomes; mi++) {
+                    if (ownedNums.indexOf(mi) === -1) missingTomes.push(mi);
+                }
+            }
+
+            var missingHtml = '';
+            if (missingTomes.length > 0) {
+                var missingItems = '';
+                for (var mj = 0; mj < missingTomes.length; mj++) {
+                    missingItems += '<div class="tome-item missing-tome"><span class="tome-title missing-title">T' + missingTomes[mj] + ' — ???</span><span class="tome-status missing-status">❌ Manquant</span></div>';
+                }
+                missingHtml =
+                    '<div class="missing-section">' +
+                    '<div class="missing-header"><span class="missing-icon">⚠️</span><span class="missing-label">' +
+                    missingTomes.length + ' tome' + (missingTomes.length > 1 ? 's' : '') + ' manquant' + (missingTomes.length > 1 ? 's' : '') +
+                    '</span></div><div class="missing-list">' + missingItems + '</div></div>';
+            }
+
+            // Badges
+            var compIcon = '';
+            if (sg.isCompleted) compIcon = '<span class="saga-complete-badge">🎉 Terminée !</span>';
+            else if (missingTomes.length === 0 && sg.ownedCount >= sg.totalTomes) compIcon = '<span class="saga-all-owned-badge">📚 Tous possédés</span>';
+
+            // Note moyenne
+            var ratedBooks = sg.books.filter(function (b) { return b.rating > 0; });
+            var avg = ratedBooks.length > 0 ? (ratedBooks.reduce(function (sum, b) { return sum + b.rating; }, 0) / ratedBooks.length).toFixed(1) : null;
+            var missingCount = sg.totalTomes - sg.ownedCount;
+
+            parts.push(
+                '<div class="saga-card ' + (sg.isCompleted ? 'saga-completed' : '') + ' ' + (missingTomes.length > 0 ? 'saga-has-missing' : '') + '">' +
+                '<h3>📖 ' + escapeHTML(sg.name) + '</h3>' +
+                '<p class="saga-author">par ' + escapeHTML(sg.author) + '</p>' +
+                '<span class="genre-tag">' + escapeHTML(sg.genre) + '</span>' + compIcon +
+                '<div class="saga-info">' +
+                '<span>📚 ' + sg.ownedCount + '/' + sg.totalTomes + ' possédés</span>' +
+                '<span>✅ ' + sg.readCount + ' lus</span>' +
+                (missingCount > 0 ? '<span class="missing-count-tag">❌ ' + missingCount + ' manquants</span>' : '') +
+                (avg ? '<span>⭐ ' + avg + '/5</span>' : '') +
+                '</div>' +
+                '<p class="progress-text">' + sg.progress + '% lu ' + (sg.isCompleted ? '🎉' : '') + '</p>' +
+                '<div class="progress-bar"><div class="progress-fill" style="width:' + Math.min(sg.progress, 100) + '%"></div></div>' +
+                '<div class="tomes-list"><p class="tomes-section-title">📗 Tomes possédés (' + sg.ownedCount + ')</p>' + tomesHtml + '</div>' +
+                missingHtml +
+                '<div class="actions"><button data-action="editSaga" data-value="' + sg.key + '" class="btn-edit-saga" type="button">✏️ Modifier tomes prévus</button></div>' +
+                '</div>'
+            );
+        }
+        container.innerHTML = parts.join('');
+    }
+
+    function filterSagas(f, btn) {
+        state.sagaFilter = f;
+        var btns = document.querySelectorAll('#page-sagas .filter-btn');
+        for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+        if (btn) btn.classList.add('active');
+        renderSagas();
+    }
+
+    function openEditSagaModal(key) {
+        state.editSagaKey = key;
+        var allSeries = getAllSeries();
+        var s = allSeries[key];
+        if (!s) return;
+        setText('editSagaTitle', s.name);
+        var t = $('editSagaTotalTomes');
+        if (t) t.value = s.totalTomes;
+        openModal('editSagaModal');
+    }
+
+    function confirmEditSaga() {
+        var val = parseInt(getRawVal('editSagaTotalTomes'));
+        if (!val || val < 1) { showToast('⚠️ Nombre invalide !'); return; }
+        if (!sagasMeta[state.editSagaKey]) sagasMeta[state.editSagaKey] = {};
+        sagasMeta[state.editSagaKey].totalTomes = val;
+        saveSagasMeta();
+        renderAll();
+        showToast('✏️ Mise à jour !');
+        closeModal('editSagaModal');
+        state.editSagaKey = null;
+    }
+
+    // ============================================================
+    //  AUTEURS
+    // ============================================================
+    function renderAuthors() {
+        var container = $('authorsList');
+        if (!container) return;
+
+        var query = getVal('authorSearchInput').toLowerCase();
+        var sortBy = getRawVal('authorSortSelect') || 'count';
+        var allSeries = getAllSeries();
+
+        // Regrouper par auteur
+        var authorMap = {};
+        for (var i = 0; i < books.length; i++) {
+            var key = books[i].author.trim();
+            if (!authorMap[key]) authorMap[key] = { name: key, books: [], extBooks: [] };
+            authorMap[key].books.push(books[i]);
+        }
+        for (var i2 = 0; i2 < external.length; i2++) {
+            var key2 = external[i2].author.trim();
+            if (!authorMap[key2]) authorMap[key2] = { name: key2, books: [], extBooks: [] };
+            authorMap[key2].extBooks.push(external[i2]);
+        }
+
+        // Construire les auteurs
+        var authors = [];
+        var aKeys = Object.keys(authorMap);
+        for (var j = 0; j < aKeys.length; j++) {
+            var a = authorMap[aKeys[j]];
+            if (query && a.name.toLowerCase().indexOf(query) === -1) continue;
+
+            var totalBooks = a.books.length + a.extBooks.length;
+            var readB = 0, ratingSum = 0, ratedCount = 0;
+
+            for (var k = 0; k < a.books.length; k++) {
+                if (a.books[k].status === 'read') readB++;
+                if (a.books[k].rating > 0) { ratingSum += a.books[k].rating; ratedCount++; }
+            }
+            for (var k2 = 0; k2 < a.extBooks.length; k2++) {
+                readB++; // Les externes sont tous considérés comme lus
+                if (a.extBooks[k2].rating > 0) { ratingSum += a.extBooks[k2].rating; ratedCount++; }
+            }
+
+            var aSeries = [];
+            var sKeys = Object.keys(allSeries);
+            for (var s = 0; s < sKeys.length; s++) {
+                if (allSeries[sKeys[s]].author.trim() === a.name) aSeries.push(allSeries[sKeys[s]]);
+            }
+
+            authors.push({
+                name: a.name, books: a.books, extBooks: a.extBooks, totalBooks: totalBooks,
+                readBooks: readB,
+                avgRating: ratedCount > 0 ? ratingSum / ratedCount : 0,
+                authorSeries: aSeries
+            });
+        }
+
+        // Tri
+        authors.sort(function (a, b) {
+            switch (sortBy) {
+                case 'name':   return a.name.localeCompare(b.name);
+                case 'rating': return b.avgRating - a.avgRating;
+                case 'read':   return b.readBooks - a.readBooks;
+                default:       return b.totalBooks - a.totalBooks;
+            }
+        });
+
+        // Stats
+        setText('authorsTotal', authors.length);
+        if (authors.length > 0) {
+            var sorted = authors.slice().sort(function (a, b) { return b.totalBooks - a.totalBooks; });
+            var topName = sorted[0].name;
+            setText('authorTopName', topName.length > 15 ? topName.substring(0, 15) + '…' : topName);
+            setText('authorTopCount', sorted[0].totalBooks);
+        } else {
+            setText('authorTopName', '-');
+            setText('authorTopCount', '0');
+        }
+
+        if (!authors.length) {
+            container.innerHTML = '<div class="empty-state"><span class="emoji">✍️</span><p>Aucun auteur trouvé.</p></div>';
+            return;
+        }
+
+        var parts = [];
+        for (var ai = 0; ai < authors.length; ai++) {
+            var au = authors[ai];
+
+            // Liste des livres de l'auteur
+            var allBooksList = [];
+            for (var b1 = 0; b1 < au.books.length; b1++) allBooksList.push({ book: au.books[b1], isExternal: false });
+            for (var b2 = 0; b2 < au.extBooks.length; b2++) allBooksList.push({ book: au.extBooks[b2], isExternal: true });
+            allBooksList.sort(function (x, y) { return x.book.title.localeCompare(y.book.title); });
+
+            var booksHtml = '';
+            for (var bi = 0; bi < allBooksList.length; bi++) {
+                var bkObj = allBooksList[bi];
+                var bk = bkObj.book;
+                var statusCls = bkObj.isExternal ? 'ab-ext' : (bk.status === 'read' ? 'ab-read' : 'ab-toread');
+                var statusIcon = bkObj.isExternal ? '📖' : (bk.status === 'read' ? '✅' : '📖');
+                var extLabel = bkObj.isExternal ? ' (externe)' : '';
+
+                booksHtml +=
+                    '<div class="author-book-item">' +
+                    '<span class="ab-title">' + escapeHTML(bk.title) +
+                    (bk.tome ? ' (T' + bk.tome + ')' : '') +
+                    (bk.series ? ' — ' + escapeHTML(bk.series) : '') + extLabel +
+                    '</span>' +
+                    '<span class="ab-status ' + statusCls + '">' + statusIcon + '</span>' +
+                    (bk.rating > 0 ? '<span class="ab-rating">' + '★'.repeat(bk.rating) + '</span>' : '') +
+                    '</div>';
+            }
+
+            // Séries de l'auteur
+            var seriesHtml = '';
+            if (au.authorSeries.length > 0) {
+                var seriesParts = [];
+                for (var si = 0; si < au.authorSeries.length; si++) {
+                    seriesParts.push(escapeHTML(au.authorSeries[si].name) + ' (' + au.authorSeries[si].readCount + '/' + au.authorSeries[si].totalTomes + ')');
+                }
+                seriesHtml = '<p class="author-series">📖 Sagas : ' + seriesParts.join(', ') + '</p>';
+            }
+
+            var uid = 'au_' + ai + '_' + Math.random().toString(36).substr(2, 6);
+
+            parts.push(
+                '<div class="author-card">' +
+                '<h3>✍️ ' + escapeHTML(au.name) + '</h3>' +
+                '<div class="author-stats">' +
+                '<div class="author-stat"><span class="author-stat-num">' + au.totalBooks + '</span><span class="author-stat-label">Livres</span></div>' +
+                '<div class="author-stat"><span class="author-stat-num">' + au.readBooks + '</span><span class="author-stat-label">Lus</span></div>' +
+                '<div class="author-stat"><span class="author-stat-num">' + (au.avgRating > 0 ? au.avgRating.toFixed(1) + '⭐' : '-') + '</span><span class="author-stat-label">Note</span></div>' +
+                '<div class="author-stat"><span class="author-stat-num">' + au.authorSeries.length + '</span><span class="author-stat-label">Sagas</span></div>' +
+                '</div>' + seriesHtml +
+                (au.totalBooks > 0
+                    ? '<button data-action="toggleAuthor" data-value="' + uid + '" class="toggle-books-btn" type="button">📚 Voir les ' + au.totalBooks + ' livres</button>' +
+                      '<div class="author-books-container" id="' + uid + '">' + booksHtml + '</div>'
+                    : '') +
+                '</div>'
+            );
+        }
+        container.innerHTML = parts.join('');
+    }
+
+    function toggleAuthorBooks(uid, btn) {
+        var c = $(uid);
+        if (!c) return;
+        var exp = c.classList.toggle('expanded');
+        btn.textContent = exp ? '📚 Masquer' : '📚 Voir les livres';
+    }
+
+    // ============================================================
+    //  WISHLIST
+    // ============================================================
+    function addWishlistItem(e) {
+        e.preventDefault();
+        var title = getVal('wishTitle');
+        var author = getVal('wishAuthor');
+        if (!title || !author) { showToast('⚠️ Titre et auteur requis !'); return; }
+
+        wishlist.push({
+            id: nowTimestamp(), title: title, author: author,
+            genre: getRawVal('wishGenre'), format: getRawVal('wishFormat'),
+            price: parseFloat(getRawVal('wishPrice')) || 0,
+            priority: parseInt(getRawVal('wishPriority')) || 2,
+            notes: getVal('wishNotes'),
+            series: getVal('wishSeries') || null,
+            tome: parseInt(getRawVal('wishTome')) || null,
+            status: 'toBuy', dateAdded: nowDateStr(), dateBought: null
+        });
+
+        saveWishlist();
+        renderWishlist();
+        updateStats();
+        updateWishSeriesSuggestions();
+        var form = $('addWishlistForm');
+        if (form) form.reset();
+        showToast('🛒 "' + title + '" ajouté !');
+    }
+
+    function renderWishlist() {
+        var container = $('wishlistList');
+        if (!container) return;
+
+        var query = getVal('wishSearchInput').toLowerCase();
+        var filter = state.wishlistFilter;
+
+        var filtered = [];
+        for (var i = 0; i < wishlist.length; i++) {
+            var it = wishlist[i];
+            var matchFilter = filter === 'all'
+                || (filter === 'toBuy' && it.status === 'toBuy')
+                || (filter === 'bought' && it.status === 'bought');
+
+            var matchSearch = !query
+                || it.title.toLowerCase().indexOf(query) !== -1
+                || it.author.toLowerCase().indexOf(query) !== -1
+                || (it.genre && it.genre.toLowerCase().indexOf(query) !== -1)
+                || (it.series && it.series.toLowerCase().indexOf(query) !== -1)
+                || (it.format && it.format.toLowerCase().indexOf(query) !== -1);
+
+            if (matchFilter && matchSearch) filtered.push(it);
+        }
+
+        filtered.sort(function (a, b) {
+            if (a.status !== b.status) return a.status === 'toBuy' ? -1 : 1;
+            return b.priority - a.priority;
+        });
+
+        if (!filtered.length) {
+            container.innerHTML = '<div class="empty-state"><span class="emoji">🛒</span><p>Aucun livre dans la wishlist.</p></div>';
+            return;
+        }
+
+        var pl = { 3: '🔴 Haute', 2: '🟡 Moyenne', 1: '🟢 Basse' };
+        var pc = { 3: 'high', 2: 'medium', 1: 'low' };
+        var parts = [];
+
+        for (var j = 0; j < filtered.length; j++) {
+            var it = filtered[j];
+            var sc = it.status === 'bought' ? 'wish-bought' : 'wish-to-buy';
+            var sl = it.status === 'bought' ? '✅ Acheté' : '📋 À acheter';
+
+            parts.push(
+                '<div class="book-card ' + sc + '">' +
+                '<button class="delete-icon" data-action="deleteWish" data-id="' + it.id + '" type="button" aria-label="Supprimer">🗑</button>' +
+                '<h3>' + escapeHTML(it.title) + '</h3>' +
+                '<p class="author">par ' + escapeHTML(it.author) + '</p>' +
+                '<div class="wish-tags">' +
+                '<span class="genre-tag">' + escapeHTML(it.genre || 'Roman') + '</span>' +
+                '<span class="status-badge ' + sc + '">' + sl + '</span>' +
+                getFormatHtml(it.format) +
+                (it.price > 0 ? '<span class="price-tag">' + it.price.toFixed(2) + ' €</span>' : '') +
+                '<span class="priority-tag ' + (pc[it.priority] || 'medium') + '">' + (pl[it.priority] || '🟡 Moyenne') + '</span>' +
+                (it.tome ? '<span class="tome-tag">Tome ' + it.tome + '</span>' : '') +
+                (it.series ? '<span class="saga-tag">📖 ' + escapeHTML(it.series) + '</span>' : '') +
+                '</div>' +
+                (it.notes ? '<p class="wish-notes">📝 ' + escapeHTML(it.notes) + '</p>' : '') +
+                '<div class="actions">' +
+                (it.status === 'toBuy'
+                    ? '<button data-action="markBought" data-id="' + it.id + '" class="btn-bought" type="button">✅ Acheté</button>'
+                    : '<button data-action="markUnbought" data-id="' + it.id + '" class="btn-unbuy" type="button">🛒 Remettre</button>') +
+                '<button data-action="transferWish" data-id="' + it.id + '" class="btn-transfer" type="button">📚 → Biblio</button>' +
+                '<button data-action="editWish" data-id="' + it.id + '" class="btn-edit" type="button">✏️ Modifier</button>' +
+                '</div></div>'
+            );
+        }
+        container.innerHTML = parts.join('');
+    }
+
+    function filterWishlist(f, btn) {
+        state.wishlistFilter = f;
+        var btns = document.querySelectorAll('#page-wishlist .filter-btn');
+        for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+        if (btn) btn.classList.add('active');
+        renderWishlist();
+    }
+
+    function markAsBought(id) {
+        var it = findById(wishlist, id);
+        if (!it) return;
+        it.status = 'bought';
+        it.dateBought = nowDateStr();
+        saveWishlist();
+        renderWishlist();
+        updateStats();
+        showToast('✅ Acheté !');
+    }
+
+    function markAsUnbought(id) {
+        var it = findById(wishlist, id);
+        if (!it) return;
+        it.status = 'toBuy';
+        it.dateBought = null;
+        saveWishlist();
+        renderWishlist();
+        updateStats();
+        showToast('🛒 Remis !');
+    }
+
+    function deleteWishlistItem(id) {
+        var item = findById(wishlist, id);
+        if (!item || !confirm('Supprimer "' + item.title + '" ?')) return;
+
+        if (item.fromExternal) {
+            var ext = findById(external, item.fromExternal);
+            if (ext) { ext.wantToBuy = false; saveExternal(); }
+        }
+
+        wishlist = removeById(wishlist, id);
+        saveWishlist();
+        renderAll();
+        showToast('🗑 Supprimé.');
+    }
+
+    // ============================================================
+    //  MODALE TRANSFERT
+    // ============================================================
+    function openTransferModal(id) {
+        state.transferBookId = id;
+        var item = findById(wishlist, id);
+        if (!item) return;
+        setText('transferBookTitle', item.title + ' — ' + item.author);
+        var cb = $('removeFromWishlist');
+        if (cb) cb.checked = true;
+        openModal('transferModal');
+    }
+
+    function confirmTransfer() {
+        var item = findById(wishlist, state.transferBookId);
+        if (!item) return;
+
+        // Vérif doublon
+        for (var j = 0; j < books.length; j++) {
+            if (books[j].title.toLowerCase() === item.title.toLowerCase() &&
+                books[j].author.toLowerCase() === item.author.toLowerCase()) {
+                showToast('⚠️ Déjà dans la biblio !');
+                closeModal('transferModal');
+                return;
+            }
+        }
+
+        books.push({
+            id: nowTimestamp(), title: item.title, author: item.author,
+            genre: item.genre || 'Roman', format: item.format || 'Broché',
+            series: item.series || null, tome: item.tome || null,
+            status: 'toRead', rating: 0, review: '',
+            dateAdded: nowDateStr(), dateRead: null,
+            dateStart: null, dateEnd: null
+        });
+
+        if (item.series) {
+            var key = getSeriesKey(item.series);
+            if (!sagasMeta[key]) sagasMeta[key] = {};
+            saveSagasMeta();
+        }
+
+        var cb = $('removeFromWishlist');
+        if (cb && cb.checked) {
+            wishlist = removeById(wishlist, state.transferBookId);
+        } else {
+            item.status = 'bought';
+            item.dateBought = nowDateStr();
+        }
+
+        saveBooks();
+        saveWishlist();
+        renderAll();
+        showToast('📚 Transféré !');
+        closeModal('transferModal');
+    }
+
+    // ============================================================
+    //  STATS GLOBALES — BUG FIX : totalReadGlobal corrigé
+    // ============================================================
+    function updateStats() {
+        var toRead = 0, read = 0, rSum = 0, rCount = 0, oneShot = 0, broche = 0, poche = 0;
+
+        for (var i = 0; i < books.length; i++) {
+            var b = books[i];
+            if (b.status === 'toRead') toRead++;
+            else if (b.status === 'read') read++;
+            if (b.rating > 0) { rSum += b.rating; rCount++; }
+            if (!b.series || !b.series.trim()) oneShot++;
+            if (b.format === 'Broché') broche++;
+            else if (b.format === 'Poche') poche++;
+        }
+
+        // BUG FIX : on ne compte que les externes qui ont été notés OU lus
+        // Les externes sont considérés comme "lus" car ce sont des livres
+        // empruntés/lus ailleurs
+        var extReadCount = external.length;
+
+        for (var e = 0; e < external.length; e++) {
+            if (external[e].rating > 0) { rSum += external[e].rating; rCount++; }
+        }
+
+        setText('totalBooks', books.length);
+        setText('toReadBooks', toRead);
+        setText('readBooks', read);
+        setText('externalCount', external.length);
+        setText('totalReadGlobal', read + extReadCount);
+        setText('avgRating', rCount > 0 ? (rSum / rCount).toFixed(1) : '-');
+        setText('oneShotCount', oneShot);
+        setText('brocheCount', broche);
+        setText('pocheCount', poche);
+
+        // Wishlist stats
+        var wToBuy = 0, wBought = 0, budget = 0, spent = 0;
+        for (var j = 0; j < wishlist.length; j++) {
+            var w = wishlist[j];
+            if (w.status === 'toBuy') { wToBuy++; budget += w.price || 0; }
+            else if (w.status === 'bought') { wBought++; spent += w.price || 0; }
+        }
+
+        setText('wishlistCount', wToBuy);
+        setText('wishlistTotal', wToBuy);
+        setText('wishlistBought', wBought);
+        setText('wishlistBudget', budget.toFixed(2) + ' €');
+        setText('wishlistSpent', spent.toFixed(2) + ' €');
+    }
+
+    // ============================================================
+    //  ÉDITION LIVRE BIBLIOTHÈQUE
+    // ============================================================
+    function openEditBookModal(id) {
+        state.editBookId = id;
+        var b = findById(books, id);
+        if (!b) return;
+
+        setFormVal('editBookTitle', b.title);
+        setFormVal('editBookAuthor', b.author);
+        setFormVal('editBookGenre', b.genre || 'Roman');
+        setFormVal('editBookFormat', b.format || 'Broché');
+        setFormVal('editBookSeries', b.series || '');
+        setFormVal('editBookTome', b.tome || '');
+
+        openModal('editBookModal');
+    }
+
+    function confirmEditBook() {
+        var b = findById(books, state.editBookId);
+        if (!b) return;
+
+        var title = getVal('editBookTitle');
+        var author = getVal('editBookAuthor');
+        if (!title || !author) { showToast('⚠️ Titre et auteur requis !'); return; }
+
+        var oldSeries = b.series;
+        b.title = title;
+        b.author = author;
+        b.genre = getRawVal('editBookGenre');
+        b.format = getRawVal('editBookFormat');
+        var newSeries = getVal('editBookSeries');
+        b.series = newSeries || null;
+        b.tome = parseInt(getRawVal('editBookTome')) || null;
+
+        // Nettoyage ancienne saga
+        if (oldSeries && oldSeries !== newSeries) {
+            var oldKey = getSeriesKey(oldSeries);
+            var hasOthers = false;
+            for (var i = 0; i < books.length; i++) {
+                if (books[i].series && getSeriesKey(books[i].series) === oldKey && books[i].id !== b.id) {
+                    hasOthers = true; break;
+                }
+            }
+            if (!hasOthers) delete sagasMeta[oldKey];
+        }
+
+        if (newSeries) {
+            var newKey = getSeriesKey(newSeries);
+            if (!sagasMeta[newKey]) sagasMeta[newKey] = {};
+        }
+
+        saveBooks();
+        saveSagasMeta();
+        renderAll();
+        showToast('✅ "' + title + '" modifié !');
+        closeModal('editBookModal');
+        state.editBookId = null;
+    }
+
+    // ============================================================
+    //  ÉDITION WISHLIST
+    // ============================================================
+    function openEditWishModal(id) {
+        state.editWishId = id;
+        var it = findById(wishlist, id);
+        if (!it) return;
+
+        setFormVal('editWishTitle', it.title);
+        setFormVal('editWishAuthor', it.author);
+        setFormVal('editWishGenre', it.genre || 'Roman');
+        setFormVal('editWishFormat', it.format || 'Broché');
+        setFormVal('editWishPriority', it.priority || 2);
+        setFormVal('editWishSeries', it.series || '');
+        setFormVal('editWishTome', it.tome || '');
+        setFormVal('editWishPrice', it.price || '');
+        setFormVal('editWishNotes', it.notes || '');
+
+        openModal('editWishModal');
+    }
+
+    function confirmEditWish() {
+        var it = findById(wishlist, state.editWishId);
+        if (!it) return;
+
+        var title = getVal('editWishTitle');
+        var author = getVal('editWishAuthor');
+        if (!title || !author) { showToast('⚠️ Titre et auteur requis !'); return; }
+
+        it.title = title;
+        it.author = author;
+        it.genre = getRawVal('editWishGenre');
+        it.format = getRawVal('editWishFormat');
+        it.priority = parseInt(getRawVal('editWishPriority')) || 2;
+        it.series = getVal('editWishSeries') || null;
+        it.tome = parseInt(getRawVal('editWishTome')) || null;
+        it.price = parseFloat(getRawVal('editWishPrice')) || 0;
+        it.notes = getVal('editWishNotes');
+
+        saveWishlist();
+        renderAll();
+        showToast('✅ "' + title + '" modifié !');
+        closeModal('editWishModal');
+        state.editWishId = null;
+    }
+
+    // ============================================================
+    //  ÉDITION EXTERNE
+    // ============================================================
+    function openEditExtModal(id) {
+        state.editExtId = id;
+        var it = findById(external, id);
+        if (!it) return;
+
+        setFormVal('editExtTitle', it.title);
+        setFormVal('editExtAuthor', it.author);
+        setFormVal('editExtGenre', it.genre || 'Roman');
+        setFormVal('editExtSource', it.source || 'Bibliothèque');
+        setFormVal('editExtSeries', it.series || '');
+        setFormVal('editExtTome', it.tome || '');
+        setFormVal('editExtNotes', it.notes || '');
+
+        openModal('editExtModal');
+    }
+
+    function confirmEditExt() {
+        var it = findById(external, state.editExtId);
+        if (!it) return;
+
+        var title = getVal('editExtTitle');
+        var author = getVal('editExtAuthor');
+        if (!title || !author) { showToast('⚠️ Titre et auteur requis !'); return; }
+
+        it.title = title;
+        it.author = author;
+        it.genre = getRawVal('editExtGenre');
+        it.source = getRawVal('editExtSource');
+        it.series = getVal('editExtSeries') || null;
+        it.tome = parseInt(getRawVal('editExtTome')) || null;
+        it.notes = getVal('editExtNotes');
+
+        saveExternal();
+        renderAll();
+        showToast('✅ "' + title + '" modifié !');
+        closeModal('editExtModal');
+        state.editExtId = null;
+    }
+
+    // Helper pour les modales d'édition
+    function setFormVal(id, value) {
+        var el = $(id);
+        if (el) el.value = value;
+    }
+
+    // ============================================================
+    //  TOAST
+    // ============================================================
+    function showToast(msg) {
+        var ex = document.querySelector('.toast');
+        if (ex) ex.remove();
+        var t = document.createElement('div');
+        t.className = 'toast';
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(function () { if (t.parentNode) t.remove(); }, 3000);
+    }
+
+    // ============================================================
+    //  FIREBASE
+    // ============================================================
+    document.addEventListener('firebaseReady', function () {
+        var auth = window.firebaseAuth;
+        if (!auth || !window.firebaseOnAuthChanged) return;
+        window.firebaseOnAuthChanged(auth, function (user) {
+            if (user) {
+                state.currentUser = user;
+                showLoggedUI(user);
+                firebasePullData();
+            } else {
+                state.currentUser = null;
+                showNotLoggedUI();
+            }
+        });
     });
-});
 
-function showAuthTab(tab, btn) {
-    var tabs = document.querySelectorAll('.auth-tab');
-    var forms = document.querySelectorAll('.auth-form');
-    for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
-    for (var j = 0; j < forms.length; j++) forms[j].classList.remove('active');
-    btn.classList.add('active');
-    document.getElementById(tab + 'Form').classList.add('active');
-}
+    function showAuthTab(tab, btn) {
+        var tabs = document.querySelectorAll('.auth-tab');
+        var forms = document.querySelectorAll('.auth-form');
+        for (var i = 0; i < tabs.length; i++) {
+            tabs[i].classList.remove('active');
+            tabs[i].setAttribute('aria-selected', 'false');
+        }
+        for (var j = 0; j < forms.length; j++) forms[j].classList.remove('active');
+        if (btn) {
+            btn.classList.add('active');
+            btn.setAttribute('aria-selected', 'true');
+        }
+        var f = $(tab + 'Form');
+        if (f) f.classList.add('active');
+    }
 
-function showLoggedUI(user) {
-    document.getElementById('authNotLogged').style.display = 'none';
-    document.getElementById('authLogged').style.display = 'block';
-    document.getElementById('userEmail').textContent = user.email;
-}
+    function showLoggedUI(user) {
+        var nl = $('authNotLogged');
+        var l = $('authLogged');
+        if (nl) nl.style.display = 'none';
+        if (l) l.style.display = 'block';
+        setText('userEmail', user.email);
+    }
 
-function showNotLoggedUI() {
-    document.getElementById('authNotLogged').style.display = 'block';
-    document.getElementById('authLogged').style.display = 'none';
-}
+    function showNotLoggedUI() {
+        var nl = $('authNotLogged');
+        var l = $('authLogged');
+        if (nl) nl.style.display = 'block';
+        if (l) l.style.display = 'none';
+    }
 
-function firebaseRegister() {
-    var email = document.getElementById('regEmail').value.trim();
-    var pass = document.getElementById('regPassword').value;
-    var pass2 = document.getElementById('regPassword2').value;
-    if (!email || !pass) { showToast('⚠️ Remplis tous les champs !'); return; }
-    if (pass.length < 6) { showToast('⚠️ Mot de passe : min. 6 caractères'); return; }
-    if (pass !== pass2) { showToast('⚠️ Les mots de passe ne correspondent pas !'); return; }
-    window.firebaseCreateUser(window.firebaseAuth, email, pass)
-        .then(function () { showToast('✅ Compte créé !'); setTimeout(firebaseSync, 1000); })
-        .catch(function (error) {
-            var msg = '❌ Erreur';
-            if (error.code === 'auth/email-already-in-use') msg = '⚠️ Email déjà utilisé';
-            else if (error.code === 'auth/invalid-email') msg = '⚠️ Email invalide';
-            else if (error.code === 'auth/weak-password') msg = '⚠️ Mot de passe trop faible';
-            showToast(msg);
-        });
-}
+    function firebaseRegister() {
+        var email = getVal('regEmail');
+        var pass = getRawVal('regPassword');
+        var pass2 = getRawVal('regPassword2');
 
-function firebaseLogin() {
-    var email = document.getElementById('loginEmail').value.trim();
-    var pass = document.getElementById('loginPassword').value;
-    if (!email || !pass) { showToast('⚠️ Remplis tous les champs !'); return; }
-    window.firebaseSignIn(window.firebaseAuth, email, pass)
-        .then(function () { showToast('✅ Connecté !'); })
-        .catch(function (error) {
-            var msg = '❌ Erreur';
-            if (error.code === 'auth/user-not-found') msg = '⚠️ Utilisateur introuvable';
-            else if (error.code === 'auth/wrong-password') msg = '⚠️ Mot de passe incorrect';
-            else if (error.code === 'auth/invalid-email') msg = '⚠️ Email invalide';
-            else if (error.code === 'auth/invalid-credential') msg = '⚠️ Identifiants invalides';
-            showToast(msg);
-        });
-}
+        if (!email || !pass) { showToast('⚠️ Remplis tous les champs !'); return; }
+        if (pass.length < 6) { showToast('⚠️ Mot de passe : min. 6 caractères'); return; }
+        if (pass !== pass2) { showToast('⚠️ Les mots de passe ne correspondent pas !'); return; }
+        if (!window.firebaseCreateUser) { showToast('❌ Firebase non chargé'); return; }
 
-function firebaseLogout() {
-    if (!confirm('Se déconnecter ?')) return;
-    window.firebaseSignOut(window.firebaseAuth).then(function () { showToast('👋 Déconnecté !'); });
-}
+        window.firebaseCreateUser(window.firebaseAuth, email, pass)
+            .then(function () {
+                showToast('✅ Compte créé !');
+                setTimeout(firebaseSync, 1000);
+            })
+            .catch(function (error) {
+                var msgs = {
+                    'auth/email-already-in-use': '⚠️ Email déjà utilisé',
+                    'auth/invalid-email': '⚠️ Email invalide',
+                    'auth/weak-password': '⚠️ Mot de passe trop faible'
+                };
+                showToast(msgs[error.code] || '❌ Erreur : ' + error.message);
+            });
+    }
 
-function firebaseSync() {
-    if (!currentUser) { showToast('⚠️ Non connecté !'); return; }
-    setSyncStatus('syncing', '⏳ Synchronisation...');
-    var data = { books: books, wishlist: wishlist, external: external, sagasMeta: sagasMeta, settings: settings, lastSync: Date.now() };
-    var docRef = window.firebaseDoc(window.firebaseDb, 'users', currentUser.uid);
-    window.firebaseSetDoc(docRef, data)
-        .then(function () {
-            setSyncStatus('ok', '☁️ Synchronisé ' + new Date().toLocaleTimeString('fr-FR'));
-            showToast('☁️ Synchronisé !');
-        })
-        .catch(function (err) { setSyncStatus('error', '❌ Erreur'); showToast('❌ Erreur sync'); console.error(err); });
-}
+    function firebaseLogin() {
+        var email = getVal('loginEmail');
+        var pass = getRawVal('loginPassword');
 
-function firebasePullData() {
-    if (!currentUser) return;
-    setSyncStatus('syncing', '⏳ Récupération...');
-    var docRef = window.firebaseDoc(window.firebaseDb, 'users', currentUser.uid);
-    window.firebaseGetDoc(docRef)
-        .then(function (docSnap) {
-            if (docSnap.exists()) {
+        if (!email || !pass) { showToast('⚠️ Remplis tous les champs !'); return; }
+        if (!window.firebaseSignIn) { showToast('❌ Firebase non chargé'); return; }
+
+        window.firebaseSignIn(window.firebaseAuth, email, pass)
+            .then(function () { showToast('✅ Connecté !'); })
+            .catch(function (error) {
+                var msgs = {
+                    'auth/user-not-found': '⚠️ Utilisateur introuvable',
+                    'auth/wrong-password': '⚠️ Mot de passe incorrect',
+                    'auth/invalid-email': '⚠️ Email invalide',
+                    'auth/invalid-credential': '⚠️ Identifiants invalides'
+                };
+                showToast(msgs[error.code] || '❌ Erreur : ' + error.message);
+            });
+    }
+
+    function firebaseLogout() {
+        if (!confirm('Se déconnecter ?')) return;
+        if (!window.firebaseSignOut) return;
+        window.firebaseSignOut(window.firebaseAuth)
+            .then(function () { showToast('👋 Déconnecté !'); });
+    }
+
+    function firebaseSync() {
+        if (!state.currentUser) { showToast('⚠️ Non connecté !'); return; }
+
+        setSyncStatus('syncing', '⏳ Synchronisation...');
+        var data = {
+            books: books, wishlist: wishlist, external: external,
+            sagasMeta: sagasMeta, settings: settings, lastSync: nowTimestamp()
+        };
+
+        var docRef = window.firebaseDoc(window.firebaseDb, 'users', state.currentUser.uid);
+        window.firebaseSetDoc(docRef, data)
+            .then(function () {
+                setSyncStatus('ok', '☁️ Synchronisé ' + new Date().toLocaleTimeString('fr-FR'));
+                showToast('☁️ Synchronisé !');
+            })
+            .catch(function (err) {
+                setSyncStatus('error', '❌ Erreur');
+                showToast('❌ Erreur sync');
+                console.error('Sync error:', err);
+            });
+    }
+
+    function firebasePullData() {
+        if (!state.currentUser) return;
+
+        setSyncStatus('syncing', '⏳ Récupération...');
+        var docRef = window.firebaseDoc(window.firebaseDb, 'users', state.currentUser.uid);
+
+        window.firebaseGetDoc(docRef)
+            .then(function (docSnap) {
+                if (!docSnap.exists()) {
+                    setSyncStatus('ok', '☁️ Premier envoi...');
+                    firebaseSync();
+                    return;
+                }
+
                 var data = docSnap.data();
                 var localLastSync = parseInt(localStorage.getItem('lastLocalChange') || '0');
                 var cloudLastSync = data.lastSync || 0;
+
                 if (localLastSync > cloudLastSync && (books.length > 0 || wishlist.length > 0 || external.length > 0)) {
-                    if (confirm('⚠️ Données locales plus récentes.\n\nOK = envoyer local vers cloud / Annuler = récupérer cloud')) {
-                        firebaseSync(); return;
+                    if (confirm('⚠️ Données locales plus récentes.\n\nOK = local vers cloud / Annuler = cloud vers local')) {
+                        firebaseSync();
+                        return;
                     }
                 }
-                if (data.books) books = data.books;
-                if (data.wishlist) wishlist = data.wishlist;
-                if (data.external) external = data.external;
-                if (data.sagasMeta) sagasMeta = data.sagasMeta;
-                if (data.settings) { settings = Object.assign({}, settings, data.settings); applySettings(); }
-                localStorage.setItem('myBookPile', JSON.stringify(books));
-                localStorage.setItem('myBookWishlist', JSON.stringify(wishlist));
-                localStorage.setItem('myBookExternal', JSON.stringify(external));
-                localStorage.setItem('myBookSagasMeta', JSON.stringify(sagasMeta));
+
+                if (data.books && Array.isArray(data.books)) books = data.books;
+                if (data.wishlist && Array.isArray(data.wishlist)) wishlist = data.wishlist;
+                if (data.external && Array.isArray(data.external)) external = data.external;
+                if (data.sagasMeta && typeof data.sagasMeta === 'object') sagasMeta = data.sagasMeta;
+                if (data.settings && typeof data.settings === 'object') {
+                    settings = Object.assign({}, settings, data.settings);
+                    applySettings();
+                }
+
+                saveJSON('myBookPile', books);
+                saveJSON('myBookWishlist', wishlist);
+                saveJSON('myBookExternal', external);
+                saveJSON('myBookSagasMeta', sagasMeta);
                 saveSettings();
                 renderAll();
                 setSyncStatus('ok', '☁️ Récupéré');
                 showToast('⬇️ Récupéré !');
-            } else {
-                setSyncStatus('ok', '☁️ Premier envoi...');
-                firebaseSync();
-            }
-        })
-        .catch(function (err) { setSyncStatus('error', '❌ Erreur'); console.error(err); });
-}
+            })
+            .catch(function (err) {
+                setSyncStatus('error', '❌ Erreur');
+                console.error('Pull error:', err);
+            });
+    }
 
-function setSyncStatus(status, msg) {
-    var el = document.getElementById('syncStatus');
-    if (!el) return;
-    el.textContent = msg;
-    el.classList.remove('syncing', 'error');
-    if (status === 'syncing') el.classList.add('syncing');
-    if (status === 'error') el.classList.add('error');
-}
+    function setSyncStatus(status, msg) {
+        var el = $('syncStatus');
+        if (!el) return;
+        el.textContent = msg;
+        el.classList.remove('syncing', 'error');
+        if (status === 'syncing') el.classList.add('syncing');
+        else if (status === 'error') el.classList.add('error');
+    }
 
-function triggerAutoSync() {
-    localStorage.setItem('lastLocalChange', Date.now().toString());
-    if (!currentUser) return;
-    if (syncTimeout) clearTimeout(syncTimeout);
-    syncTimeout = setTimeout(function () { firebaseSync(); }, 3000);
-}
+    function triggerAutoSync() {
+        localStorage.setItem('lastLocalChange', nowTimestamp().toString());
+        if (!state.currentUser) return;
+        if (state.syncTimeout) clearTimeout(state.syncTimeout);
+        state.syncTimeout = setTimeout(firebaseSync, 3000);
+    }
+
+})();
