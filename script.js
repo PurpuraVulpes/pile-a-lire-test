@@ -1,5 +1,5 @@
 // ============================================================
-//  MA PILE À LIVRES — SCRIPT PRINCIPAL v11.1
+//  MA PILE À LIVRES — SCRIPT PRINCIPAL v11.2
 //  Optimisé : événements délégués, bugs corrigés, performances
 // ============================================================
 
@@ -144,7 +144,7 @@
             if (tab) switchTab(tab, btn);
         });
 
-        // Filtres (home, external, sagas, wishlist)
+        // Filtres
         delegateClick(document.body, '.filter-btn[data-filter]', function (btn) {
             var filter = btn.getAttribute('data-filter');
             var target = btn.getAttribute('data-target');
@@ -164,13 +164,12 @@
             setFont(btn.getAttribute('data-font-btn'));
         });
 
-        // Étoiles modales (biblio)
+        // Étoiles
         delegateClick($('starsInput'), '.star-btn', function (btn) {
             var r = parseInt(btn.getAttribute('data-rating'));
             if (r) { state.selectedRating = r; updateStarsDisplay(); }
         });
 
-        // Étoiles modales (externe)
         delegateClick($('starsExtInput'), '.star-btn', function (btn) {
             var r = parseInt(btn.getAttribute('data-rating'));
             if (r) { state.selectedExtRating = r; updateExtStarsDisplay(); }
@@ -186,7 +185,7 @@
         bindForm('addExtForm', addExternal);
         bindForm('addWishlistForm', addWishlistItem);
 
-        // Boutons simples par ID
+        // Boutons par ID
         bindClick('randomBtn', pickRandomBook);
         bindClick('confirmRatingBtn', confirmRating);
         bindClick('confirmExtRatingBtn', confirmExtRating);
@@ -213,7 +212,7 @@
             });
         }
 
-        // Fermeture modale par Escape
+        // Fermeture par Escape
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
                 var modals = document.querySelectorAll('.modal-overlay.active');
@@ -259,11 +258,10 @@
         bindClick('btnPullData', firebasePullData);
         bindClick('btnLogout', firebaseLogout);
 
-        // Délégation pour les actions dynamiques (cartes générées)
+        // Délégation pour actions dynamiques
         delegateClick(document.body, '[data-action]', handleDynamicAction);
     }
 
-    // Helpers binding
     function bindClick(id, fn) {
         var el = $(id);
         if (el) el.addEventListener('click', fn);
@@ -284,7 +282,6 @@
         if (el) el.addEventListener('submit', fn);
     }
 
-    // ⚠️ CORRIGÉ : utilise querySelector au lieu de getElementById
     function delegateClick(parent, selector, fn) {
         if (typeof parent === 'string') {
             parent = document.querySelector(parent);
@@ -297,7 +294,7 @@
     }
 
     // ============================================================
-    //  ACTIONS DYNAMIQUES (boutons dans les cartes générées)
+    //  ACTIONS DYNAMIQUES
     // ============================================================
     function handleDynamicAction(btn) {
         var action = btn.getAttribute('data-action');
@@ -305,31 +302,26 @@
         var value = btn.getAttribute('data-value');
 
         switch (action) {
-            // Bibliothèque
             case 'markRead':       markAsRead(id); break;
             case 'markUnread':     markAsUnread(id); break;
             case 'deleteBook':     deleteBook(id); break;
             case 'rateBook':       openRatingModal(id); break;
             case 'editBook':       openEditBookModal(id); break;
 
-            // Externe
             case 'deleteExt':      deleteExternal(id); break;
             case 'rateExt':        openRatingExtModal(id); break;
             case 'editExt':        openEditExtModal(id); break;
             case 'changeExtStatus': changeExtStatus(id, value); break;
             case 'toggleExtBuy':   toggleExtWantBuy(id); break;
 
-            // Wishlist
             case 'deleteWish':     deleteWishlistItem(id); break;
             case 'markBought':     markAsBought(id); break;
             case 'markUnbought':   markAsUnbought(id); break;
             case 'transferWish':   openTransferModal(id); break;
             case 'editWish':       openEditWishModal(id); break;
 
-            // Sagas
             case 'editSaga':       openEditSagaModal(value); break;
 
-            // Auteurs
             case 'toggleAuthor':   toggleAuthorBooks(value, btn); break;
         }
     }
@@ -363,7 +355,6 @@
         if (target) target.classList.add('active');
         if (btn) btn.classList.add('active');
 
-        // Render la page active
         if (tab === 'authors') renderAuthors();
         else if (tab === 'sagas') renderSagas();
         else if (tab === 'external') renderExternal();
@@ -597,7 +588,6 @@
         }
         datalist.innerHTML = html;
 
-        // Auto-fill tomes prévus
         var input = $('bookSeries');
         if (input && input.value.trim()) {
             var key = getSeriesKey(input.value);
@@ -727,7 +717,6 @@
         var sortBy = getRawVal('bookSortSelect') || 'default';
         var filter = state.currentFilter;
 
-        // Filtrage
         var filtered = [];
         for (var i = 0; i < books.length; i++) {
             var b = books[i];
@@ -748,7 +737,6 @@
             if (matchFilter && matchSearch) filtered.push(b);
         }
 
-        // Tri
         filtered.sort(function (a, b) {
             switch (sortBy) {
                 case 'title':     return a.title.localeCompare(b.title);
@@ -981,6 +969,7 @@
         var source = getRawVal('extSource');
         var series = getVal('extSeries');
         var tome = parseInt(getRawVal('extTome')) || null;
+        var totalTomes = parseInt(getRawVal('extTotalTomes')) || null;
         var status = getRawVal('extStatus');
         var notes = getVal('extNotes');
         var wtb = $('extWantToBuy');
@@ -989,7 +978,8 @@
         var extId = nowTimestamp();
         external.push({
             id: extId, title: title, author: author, genre: genre, source: source,
-            series: series || null, tome: tome, status: status, notes: notes,
+            series: series || null, tome: tome, totalTomes: totalTomes,
+            status: status, notes: notes,
             wantToBuy: wantToBuy, rating: 0, review: '',
             dateAdded: nowDateStr(), dateStart: null, dateEnd: null
         });
@@ -1078,6 +1068,7 @@
             var it = filtered[j];
             var sc = statusClasses[it.status] || 'ext-returned';
             var sourceIcon = SOURCE_ICONS[it.source] || '📚';
+            var tomeDisplay = it.tome ? 'Tome ' + it.tome + (it.totalTomes ? '/' + it.totalTomes : '') : '';
 
             parts.push(
                 '<div class="book-card ' + sc + '">' +
@@ -1088,7 +1079,7 @@
                 '<span class="genre-tag">' + escapeHTML(it.genre) + '</span>' +
                 '<span class="status-badge ' + sc + '">' + (statusLabels[it.status] || '📖') + '</span>' +
                 (it.source ? '<span class="source-tag">' + sourceIcon + ' ' + escapeHTML(it.source) + '</span>' : '') +
-                (it.tome ? '<span class="tome-tag">Tome ' + it.tome + '</span>' : '') +
+                (tomeDisplay ? '<span class="tome-tag">' + tomeDisplay + '</span>' : '') +
                 (it.series ? '<span class="saga-tag">📖 ' + escapeHTML(it.series) + '</span>' : '') +
                 (it.wantToBuy ? '<span class="want-buy-badge">🛒 À acheter</span>' : '') +
                 '</div>' +
@@ -1887,6 +1878,7 @@
         setFormVal('editExtSource', it.source || 'Bibliothèque');
         setFormVal('editExtSeries', it.series || '');
         setFormVal('editExtTome', it.tome || '');
+        setFormVal('editExtTotalTomes', it.totalTomes || '');
         setFormVal('editExtNotes', it.notes || '');
 
         openModal('editExtModal');
@@ -1906,6 +1898,7 @@
         it.source = getRawVal('editExtSource');
         it.series = getVal('editExtSeries') || null;
         it.tome = parseInt(getRawVal('editExtTome')) || null;
+        it.totalTomes = parseInt(getRawVal('editExtTotalTomes')) || null;
         it.notes = getVal('editExtNotes');
 
         saveExternal();
