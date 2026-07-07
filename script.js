@@ -80,13 +80,6 @@
         return null;
     }
 
-    function findIndexById(arr, id) {
-        for (var i = 0; i < arr.length; i++) {
-            if (arr[i].id === id) return i;
-        }
-        return -1;
-    }
-
     function removeById(arr, id) {
         var result = [];
         for (var i = 0; i < arr.length; i++) {
@@ -142,7 +135,7 @@
     }
 
     // ============================================================
-    //  BINDING D'ÉVÉNEMENTS (remplace tous les onclick inline)
+    //  BINDING D'ÉVÉNEMENTS
     // ============================================================
     function bindEvents() {
         // Navigation
@@ -291,8 +284,11 @@
         if (el) el.addEventListener('submit', fn);
     }
 
+    // ⚠️ CORRIGÉ : utilise querySelector au lieu de getElementById
     function delegateClick(parent, selector, fn) {
-        if (typeof parent === 'string') parent = $(parent);
+        if (typeof parent === 'string') {
+            parent = document.querySelector(parent);
+        }
         if (!parent) return;
         parent.addEventListener('click', function (e) {
             var target = e.target.closest(selector);
@@ -489,7 +485,7 @@
 
         var start = new Date(startEl.value);
         var end = new Date(endEl.value);
-        var days = Math.floor((end - start) / 86400000); // 1000*60*60*24
+        var days = Math.floor((end - start) / 86400000);
 
         displayEl.classList.add('active');
         displayEl.classList.remove('warning');
@@ -736,14 +732,12 @@
         for (var i = 0; i < books.length; i++) {
             var b = books[i];
 
-            // Filtre statut
             var matchFilter = filter === 'all'
                 || (filter === 'toRead' && b.status === 'toRead')
                 || (filter === 'read' && b.status === 'read')
                 || (filter === 'oneShot' && (!b.series || !b.series.trim()))
                 || (filter === 'series' && b.series && b.series.trim());
 
-            // Filtre recherche
             var matchSearch = !query
                 || b.title.toLowerCase().indexOf(query) !== -1
                 || b.author.toLowerCase().indexOf(query) !== -1
@@ -1012,11 +1006,10 @@
     }
 
     function addToWishlistFromExternal(extId, title, author, genre, series, tome, notes) {
-        // Vérifier doublon
         for (var i = 0; i < wishlist.length; i++) {
             if (wishlist[i].title.toLowerCase() === title.toLowerCase() &&
                 wishlist[i].author.toLowerCase() === author.toLowerCase()) {
-                return; // Déjà présent
+                return;
             }
         }
         wishlist.push({
@@ -1038,7 +1031,6 @@
         var sortBy = getRawVal('extSortSelect') || 'default';
         var filter = state.extFilter;
 
-        // Filtrage
         var filtered = [];
         for (var i = 0; i < external.length; i++) {
             var e = external[i];
@@ -1058,7 +1050,6 @@
             if (matchFilter && matchSearch) filtered.push(e);
         }
 
-        // Tri
         filtered.sort(function (a, b) {
             switch (sortBy) {
                 case 'title':     return a.title.localeCompare(b.title);
@@ -1072,7 +1063,6 @@
             }
         });
 
-        // Stats externes (calculées ici car le container est sur la page)
         updateExtStats();
 
         if (!filtered.length) {
@@ -1249,7 +1239,6 @@
         var allSeries = getAllSeries();
         var allKeys = Object.keys(allSeries);
 
-        // Construire la liste
         var seriesList = [];
         for (var i = 0; i < allKeys.length; i++) {
             var s = allSeries[allKeys[i]];
@@ -1258,13 +1247,11 @@
             }
         }
 
-        // Filtrage
         var filter = state.sagaFilter;
         if (filter === 'completed') seriesList = seriesList.filter(function (s) { return s.isCompleted; });
         else if (filter === 'inProgress') seriesList = seriesList.filter(function (s) { return s.isStarted && !s.isCompleted; });
         else if (filter === 'notStarted') seriesList = seriesList.filter(function (s) { return !s.isStarted; });
 
-        // Stats
         var allValues = [];
         for (var a = 0; a < allKeys.length; a++) allValues.push(allSeries[allKeys[a]]);
 
@@ -1286,7 +1273,6 @@
             return;
         }
 
-        // Tri : en cours > pas commencées > terminées
         seriesList.sort(function (a, b) {
             if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
             return b.progress - a.progress;
@@ -1296,7 +1282,6 @@
         for (var si = 0; si < seriesList.length; si++) {
             var sg = seriesList[si];
 
-            // Tomes
             var tomesHtml = '';
             for (var ti = 0; ti < sg.books.length; ti++) {
                 var bk = sg.books[ti];
@@ -1308,7 +1293,6 @@
                     '</div>';
             }
 
-            // Tomes manquants
             var ownedNums = [];
             for (var oi = 0; oi < sg.books.length; oi++) { if (sg.books[oi].tome) ownedNums.push(sg.books[oi].tome); }
 
@@ -1332,12 +1316,10 @@
                     '</span></div><div class="missing-list">' + missingItems + '</div></div>';
             }
 
-            // Badges
             var compIcon = '';
             if (sg.isCompleted) compIcon = '<span class="saga-complete-badge">🎉 Terminée !</span>';
             else if (missingTomes.length === 0 && sg.ownedCount >= sg.totalTomes) compIcon = '<span class="saga-all-owned-badge">📚 Tous possédés</span>';
 
-            // Note moyenne
             var ratedBooks = sg.books.filter(function (b) { return b.rating > 0; });
             var avg = ratedBooks.length > 0 ? (ratedBooks.reduce(function (sum, b) { return sum + b.rating; }, 0) / ratedBooks.length).toFixed(1) : null;
             var missingCount = sg.totalTomes - sg.ownedCount;
@@ -1406,7 +1388,6 @@
         var sortBy = getRawVal('authorSortSelect') || 'count';
         var allSeries = getAllSeries();
 
-        // Regrouper par auteur
         var authorMap = {};
         for (var i = 0; i < books.length; i++) {
             var key = books[i].author.trim();
@@ -1419,7 +1400,6 @@
             authorMap[key2].extBooks.push(external[i2]);
         }
 
-        // Construire les auteurs
         var authors = [];
         var aKeys = Object.keys(authorMap);
         for (var j = 0; j < aKeys.length; j++) {
@@ -1434,7 +1414,7 @@
                 if (a.books[k].rating > 0) { ratingSum += a.books[k].rating; ratedCount++; }
             }
             for (var k2 = 0; k2 < a.extBooks.length; k2++) {
-                readB++; // Les externes sont tous considérés comme lus
+                readB++;
                 if (a.extBooks[k2].rating > 0) { ratingSum += a.extBooks[k2].rating; ratedCount++; }
             }
 
@@ -1452,7 +1432,6 @@
             });
         }
 
-        // Tri
         authors.sort(function (a, b) {
             switch (sortBy) {
                 case 'name':   return a.name.localeCompare(b.name);
@@ -1462,7 +1441,6 @@
             }
         });
 
-        // Stats
         setText('authorsTotal', authors.length);
         if (authors.length > 0) {
             var sorted = authors.slice().sort(function (a, b) { return b.totalBooks - a.totalBooks; });
@@ -1483,7 +1461,6 @@
         for (var ai = 0; ai < authors.length; ai++) {
             var au = authors[ai];
 
-            // Liste des livres de l'auteur
             var allBooksList = [];
             for (var b1 = 0; b1 < au.books.length; b1++) allBooksList.push({ book: au.books[b1], isExternal: false });
             for (var b2 = 0; b2 < au.extBooks.length; b2++) allBooksList.push({ book: au.extBooks[b2], isExternal: true });
@@ -1508,7 +1485,6 @@
                     '</div>';
             }
 
-            // Séries de l'auteur
             var seriesHtml = '';
             if (au.authorSeries.length > 0) {
                 var seriesParts = [];
@@ -1707,7 +1683,6 @@
         var item = findById(wishlist, state.transferBookId);
         if (!item) return;
 
-        // Vérif doublon
         for (var j = 0; j < books.length; j++) {
             if (books[j].title.toLowerCase() === item.title.toLowerCase() &&
                 books[j].author.toLowerCase() === item.author.toLowerCase()) {
@@ -1748,7 +1723,7 @@
     }
 
     // ============================================================
-    //  STATS GLOBALES — BUG FIX : totalReadGlobal corrigé
+    //  STATS GLOBALES
     // ============================================================
     function updateStats() {
         var toRead = 0, read = 0, rSum = 0, rCount = 0, oneShot = 0, broche = 0, poche = 0;
@@ -1763,9 +1738,6 @@
             else if (b.format === 'Poche') poche++;
         }
 
-        // BUG FIX : on ne compte que les externes qui ont été notés OU lus
-        // Les externes sont considérés comme "lus" car ce sont des livres
-        // empruntés/lus ailleurs
         var extReadCount = external.length;
 
         for (var e = 0; e < external.length; e++) {
@@ -1782,7 +1754,6 @@
         setText('brocheCount', broche);
         setText('pocheCount', poche);
 
-        // Wishlist stats
         var wToBuy = 0, wBought = 0, budget = 0, spent = 0;
         for (var j = 0; j < wishlist.length; j++) {
             var w = wishlist[j];
@@ -1832,7 +1803,6 @@
         b.series = newSeries || null;
         b.tome = parseInt(getRawVal('editBookTome')) || null;
 
-        // Nettoyage ancienne saga
         if (oldSeries && oldSeries !== newSeries) {
             var oldKey = getSeriesKey(oldSeries);
             var hasOthers = false;
@@ -1945,7 +1915,6 @@
         state.editExtId = null;
     }
 
-    // Helper pour les modales d'édition
     function setFormVal(id, value) {
         var el = $(id);
         if (el) el.value = value;
