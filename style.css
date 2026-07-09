@@ -1876,3 +1876,17 @@ footer {
     margin-top: 10px;
     flex-wrap: wrap;
 }
+
+/* ============================================================
+   SCANNER — Boutons scan photo
+   ============================================================ */
+.btn-scan-photo {
+    background: linear-gradient(135deg, #f5576c, #f093fb);
+    color: #fff;
+    width: 100%;
+}
+
+@keyframes focusPulse {
+    0%   { transform: scale(1); opacity: 1; }
+    100% { transform: scale(1.5); opacity: 0; }
+}
