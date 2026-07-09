@@ -1,6 +1,6 @@
 // ============================================================
-//  MA PILE À LIVRES — SCRIPT PRINCIPAL v11.6
-//  Scanner code-barres avec ZXing (fiable et rapide)
+//  MA PILE À LIVRES — SCRIPT PRINCIPAL v11.7
+//  Scanner : Photo iPhone + Scan direct + Tap-to-focus
 // ============================================================
 
 (function () {
@@ -40,7 +40,9 @@
         scannerActive: false,
         scannerTarget: 'book',
         lastDetectedCode: null,
-        zxingReader: null
+        zxingReader: null,
+        scannerStream: null,
+        detectionInterval: null
     };
 
     // ============================================================
@@ -233,13 +235,28 @@
         bindClick('closeEditWishModal', function () { closeModal('editWishModal'); state.editWishId = null; });
         bindClick('closeEditExtModal', function () { closeModal('editExtModal'); state.editExtId = null; });
 
-        // 📷 SCANNER CODE-BARRES
+        // 📷 SCANNER EN DIRECT
         bindClick('btnScanBarcode', function () { openScanner('book'); });
         bindClick('btnScanBarcodeExt', function () { openScanner('ext'); });
         bindClick('btnScanBarcodeWish', function () { openScanner('wish'); });
         bindClick('closeScanModal', closeScanner);
         bindClick('btnCancelScan', closeScanner);
         bindClick('btnManualISBN', askManualISBN);
+
+        // 📸 SCANNER PAR PHOTO (iPhone recommandé)
+        bindClick('btnPhotoScan', function () { openPhotoScan('book'); });
+        bindClick('btnPhotoScanExt', function () { openPhotoScan('ext'); });
+        bindClick('btnPhotoScanWish', function () { openPhotoScan('wish'); });
+
+        var photoInput = $('photoScanInput');
+        if (photoInput) {
+            photoInput.addEventListener('change', function (e) {
+                var file = e.target.files[0];
+                if (file) scanFromImage(file);
+                // Reset pour pouvoir sélectionner la même photo à nouveau
+                e.target.value = '';
+            });
+        }
 
         // Fermeture par clic overlay
         var overlays = document.querySelectorAll('.modal-overlay');
@@ -354,7 +371,79 @@
     }
 
     // ============================================================
-    //  📷 SCANNER CODE-BARRES (ZXing)
+    //  📸 SCAN PAR PHOTO (RECOMMANDÉ iPHONE)
+    // ============================================================
+    function openPhotoScan(target) {
+        state.scannerTarget = target || 'book';
+        state.lastDetectedCode = null;
+
+        var input = $('photoScanInput');
+        if (input) {
+            input.click();
+        }
+    }
+
+    function scanFromImage(file) {
+        showToast('🔍 Analyse de la photo...');
+
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            var img = new Image();
+            img.onload = function () {
+                if (typeof ZXing === 'undefined') {
+                    showToast('❌ ZXing non chargé');
+                    return;
+                }
+
+                try {
+                    var hints = new Map();
+                    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+                        ZXing.BarcodeFormat.EAN_13,
+                        ZXing.BarcodeFormat.EAN_8,
+                        ZXing.BarcodeFormat.UPC_A,
+                        ZXing.BarcodeFormat.UPC_E
+                    ]);
+                    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+
+                    var codeReader = new ZXing.BrowserMultiFormatReader(hints);
+                    codeReader.decodeFromImageElement(img)
+                        .then(function (result) {
+                            var code = result.getText();
+                            console.log('📸 Photo décodée:', code);
+
+                            if (!/^\d{10}$|^\d{13}$/.test(code)) {
+                                showToast('⚠️ Code trouvé mais pas un ISBN');
+                                return;
+                            }
+
+                            showToast('✅ Code détecté : ' + code);
+                            if (navigator.vibrate) {
+                                try { navigator.vibrate(200); } catch (e) {}
+                            }
+                            fetchBookByISBN(code);
+                        })
+                        .catch(function (err) {
+                            console.error('Decode error:', err);
+                            showToast('⚠️ Code non trouvé — réessaie avec une photo plus nette et bien cadrée');
+                        });
+                } catch (e) {
+                    console.error('Scan error:', e);
+                    showToast('❌ Erreur d\'analyse : ' + e.message);
+                }
+            };
+            img.onerror = function () {
+                showToast('❌ Impossible de charger l\'image');
+            };
+            img.src = e.target.result;
+        };
+        reader.onerror = function () {
+            showToast('❌ Impossible de lire le fichier');
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // ============================================================
+    //  📷 SCANNER EN DIRECT
     // ============================================================
     function openScanner(target) {
         if (typeof ZXing === 'undefined') {
@@ -389,146 +478,190 @@
             hint.className = 'scanner-hint';
         }
 
-        // Nettoyer et créer l'élément vidéo
-        container.innerHTML = '<video id="scanVideo" playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>';
+        // Créer la vidéo avec tap-to-focus
+        container.innerHTML =
+            '<video id="scanVideo" playsinline muted autoplay style="width:100%;height:100%;object-fit:cover;cursor:pointer;"></video>' +
+            '<div id="scanTapHint" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#fff;padding:8px 16px;border-radius:20px;font-size:12px;pointer-events:none;z-index:5;">👆 Touche pour faire la mise au point</div>';
 
-        try {
-            // Créer le lecteur ZXing avec les formats de codes-barres pour livres
-            var hints = new Map();
-            var formats = [
-                ZXing.BarcodeFormat.EAN_13,
-                ZXing.BarcodeFormat.EAN_8,
-                ZXing.BarcodeFormat.UPC_A,
-                ZXing.BarcodeFormat.UPC_E,
-                ZXing.BarcodeFormat.CODE_128
-            ];
-            hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
-            hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+        var video = document.getElementById('scanVideo');
 
-            state.zxingReader = new ZXing.BrowserMultiFormatReader(hints, 500);
-        } catch (e) {
-            console.error('ZXing init error:', e);
-            if (hint) {
-                hint.textContent = '❌ Erreur ZXing : ' + e.message;
-                hint.className = 'scanner-hint error';
+        var constraints = {
+            audio: false,
+            video: {
+                facingMode: { ideal: 'environment' },
+                width: { ideal: 1920, min: 1280 },
+                height: { ideal: 1080, min: 720 }
             }
-            return;
-        }
+        };
 
-        // Lister les caméras disponibles
-        state.zxingReader.listVideoInputDevices()
-            .then(function (videoInputDevices) {
-                if (!videoInputDevices || videoInputDevices.length === 0) {
-                    if (hint) {
-                        hint.textContent = '❌ Aucune caméra trouvée';
-                        hint.className = 'scanner-hint error';
-                    }
-                    return;
-                }
-
-                // Chercher la caméra arrière (mobile)
-                var selectedDeviceId = null;
-                for (var i = 0; i < videoInputDevices.length; i++) {
-                    var label = (videoInputDevices[i].label || '').toLowerCase();
-                    if (label.indexOf('back') !== -1 ||
-                        label.indexOf('rear') !== -1 ||
-                        label.indexOf('environment') !== -1 ||
-                        label.indexOf('arrière') !== -1) {
-                        selectedDeviceId = videoInputDevices[i].deviceId;
-                        break;
-                    }
-                }
-                // Sinon prendre la dernière (souvent l'arrière sur mobile)
-                if (!selectedDeviceId) {
-                    selectedDeviceId = videoInputDevices[videoInputDevices.length - 1].deviceId;
-                }
-
+        navigator.mediaDevices.getUserMedia(constraints)
+            .then(function (stream) {
+                video.srcObject = stream;
+                state.scannerStream = stream;
                 state.scannerActive = true;
-                                state.scannerActive = true;
 
-                // 🐛 DEBUG - à retirer après
-                var debugDiv = document.createElement('div');
-                debugDiv.id = 'scanDebug';
-                debugDiv.style.cssText = 'position:fixed;bottom:10px;left:10px;right:10px;background:rgba(0,0,0,0.8);color:#0f0;padding:10px;font-size:12px;z-index:9999;max-height:150px;overflow-y:auto;font-family:monospace;';
-                debugDiv.textContent = 'DEBUG: Scanner démarré...';
-                document.body.appendChild(debugDiv);
-                if (hint) {
-                    hint.textContent = '🔍 Vise le code-barres au dos du livre...';
-                    hint.className = 'scanner-hint';
-                }
+                // Tap-to-focus
+                video.addEventListener('click', function (e) {
+                    tapToFocus(video, stream, e);
+                });
 
-                // Démarrer le scan
-                state.zxingReader.decodeFromVideoDevice(
-                    selectedDeviceId,
-                    'scanVideo',
-                    function (result, err) {
-                        // 🐛 DEBUG
-                        var dbg = document.getElementById('scanDebug');
-                        if (dbg) {
-                            if (result) {
-                                dbg.textContent = '✅ DÉTECTÉ: ' + result.getText();
-                            } else if (err && !(err instanceof ZXing.NotFoundException)) {
-                                dbg.textContent = '❌ ERREUR: ' + err.message;
-                            }
-                        }
+                video.onloadedmetadata = function () {
+                    video.play();
 
-                        if (result) {
-                            var code = result.getText();
-                            // ... reste du code inchangé
-
-                            // Filtrer : uniquement ISBN (10 ou 13 chiffres)
-                            if (!/^\d{10}$|^\d{13}$/.test(code)) {
-                                console.log('⚠️ Pas un ISBN valide:', code);
-                                return;
-                            }
-
-                            // Éviter les doublons
-                            if (code === state.lastDetectedCode) return;
-                            state.lastDetectedCode = code;
-
-                            if (hint) {
-                                hint.textContent = '✅ Code détecté : ' + code + ' — Recherche...';
-                                hint.className = 'scanner-hint success';
-                            }
-
-                            // Vibration mobile
-                            if (navigator.vibrate) {
-                                try { navigator.vibrate(200); } catch (e) {}
-                            }
-
-                            // Récupérer les infos du livre
-                            fetchBookByISBN(code);
-                        }
-
-                        // Ignorer les erreurs "NotFoundException" (normales pendant le scan)
-                        if (err && !(err instanceof ZXing.NotFoundException)) {
-                            console.warn('Scan error:', err);
-                        }
+                    if (hint) {
+                        hint.textContent = '🔍 Vise le code-barres — touche l\'écran pour faire le focus';
+                        hint.className = 'scanner-hint';
                     }
-                );
+
+                    startBarcodeDetection(video);
+                };
             })
             .catch(function (err) {
-                console.error('ZXing camera error:', err);
+                console.error('❌ Camera error:', err);
                 if (hint) {
                     hint.textContent = '❌ Erreur caméra : ' + err.message;
                     hint.className = 'scanner-hint error';
                 }
-                showToast('❌ Erreur caméra : vérifie les permissions');
+                showToast('❌ Erreur caméra');
             });
+    }
+
+    function tapToFocus(video, stream, event) {
+        var track = stream.getVideoTracks()[0];
+        if (!track || !track.getCapabilities) return;
+
+        try {
+            var capabilities = track.getCapabilities();
+            if (capabilities.focusMode && capabilities.focusMode.indexOf('single-shot') !== -1) {
+                track.applyConstraints({
+                    advanced: [{ focusMode: 'single-shot' }]
+                }).then(function () {
+                    console.log('✅ Focus déclenché');
+                    // Feedback visuel
+                    var rect = video.getBoundingClientRect();
+                    var x = event.clientX - rect.left;
+                    var y = event.clientY - rect.top;
+
+                    var focus = document.createElement('div');
+                    focus.style.cssText = 'position:absolute;width:60px;height:60px;border:3px solid #43e97b;border-radius:50%;left:' + (x - 30) + 'px;top:' + (y - 30) + 'px;pointer-events:none;animation:focusPulse 0.6s ease-out;z-index:10;';
+                    video.parentNode.appendChild(focus);
+                    setTimeout(function () { focus.remove(); }, 600);
+                }).catch(function (e) {
+                    console.warn('Focus error:', e);
+                });
+            }
+        } catch (e) {
+            console.warn('Focus not supported:', e);
+        }
+    }
+
+    function startBarcodeDetection(video) {
+        // BarcodeDetector natif si dispo (Chrome/Edge)
+        if ('BarcodeDetector' in window) {
+            console.log('✅ Utilisation BarcodeDetector natif');
+            startNativeDetection(video);
+            return;
+        }
+
+        // Sinon ZXing (iOS Safari, Firefox)
+        console.log('⚠️ BarcodeDetector non dispo, utilisation ZXing');
+        if (typeof ZXing === 'undefined') {
+            showToast('❌ ZXing non chargé');
+            return;
+        }
+
+        try {
+            var hints = new Map();
+            hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+                ZXing.BarcodeFormat.EAN_13,
+                ZXing.BarcodeFormat.EAN_8,
+                ZXing.BarcodeFormat.UPC_A,
+                ZXing.BarcodeFormat.UPC_E
+            ]);
+            hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+
+            state.zxingReader = new ZXing.BrowserMultiFormatReader(hints, 200);
+
+            state.zxingReader.decodeFromVideoElement(video, function (result, err) {
+                if (result) {
+                    var code = result.getText();
+                    console.log('📸 Détecté:', code);
+                    handleScanResult(code);
+                }
+            });
+        } catch (e) {
+            console.error('ZXing error:', e);
+            showToast('❌ Erreur scanner : ' + e.message);
+        }
+    }
+
+    function startNativeDetection(video) {
+        try {
+            var detector = new BarcodeDetector({
+                formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e']
+            });
+
+            state.detectionInterval = setInterval(function () {
+                if (!state.scannerActive || video.readyState !== 4) return;
+
+                detector.detect(video)
+                    .then(function (barcodes) {
+                        if (barcodes.length > 0) {
+                            handleScanResult(barcodes[0].rawValue);
+                        }
+                    })
+                    .catch(function (err) {
+                        console.warn('Detect error:', err);
+                    });
+            }, 300);
+        } catch (e) {
+            console.error('BarcodeDetector error:', e);
+            startBarcodeDetection(video);
+        }
+    }
+
+    function handleScanResult(code) {
+        if (!/^\d{10}$|^\d{13}$/.test(code)) {
+            console.log('⚠️ Pas un ISBN:', code);
+            return;
+        }
+
+        if (code === state.lastDetectedCode) return;
+        state.lastDetectedCode = code;
+
+        var hint = $('scannerHint');
+        if (hint) {
+            hint.textContent = '✅ Code détecté : ' + code + ' — Recherche...';
+            hint.className = 'scanner-hint success';
+        }
+
+        if (navigator.vibrate) {
+            try { navigator.vibrate(200); } catch (e) {}
+        }
+
+        fetchBookByISBN(code);
     }
 
     function stopScanner() {
         if (state.zxingReader) {
-            try {
-                state.zxingReader.reset();
-            } catch (e) {
-                console.warn('ZXing stop error:', e);
-            }
+            try { state.zxingReader.reset(); } catch (e) {}
             state.zxingReader = null;
         }
+
+        if (state.detectionInterval) {
+            clearInterval(state.detectionInterval);
+            state.detectionInterval = null;
+        }
+
+        if (state.scannerStream) {
+            state.scannerStream.getTracks().forEach(function (track) {
+                track.stop();
+            });
+            state.scannerStream = null;
+        }
+
         state.scannerActive = false;
 
-        // Nettoyer le container vidéo
         var container = $('scannerContainer');
         if (container) container.innerHTML = '';
     }
@@ -563,6 +696,7 @@
                     var info = data.items[0].volumeInfo;
                     fillScannedBook({
                         title: info.title || '',
+                        subtitle: info.subtitle || '',
                         author: (info.authors && info.authors.join(', ')) || '',
                         genre: guessGenre(info.categories),
                         isbn: isbn
@@ -570,7 +704,6 @@
                     showToast('✅ Livre trouvé !');
                     closeScanner();
                 } else {
-                    // Fallback vers Open Library
                     fetchFromOpenLibrary(isbn);
                 }
             })
@@ -592,6 +725,7 @@
                         : '';
                     fillScannedBook({
                         title: book.title || '',
+                        subtitle: book.subtitle || '',
                         author: authors,
                         genre: 'Roman',
                         isbn: isbn
@@ -652,9 +786,22 @@
                    : state.scannerTarget === 'wish' ? 'wish'
                    : 'book';
 
-        setFormVal(prefix + 'Title', data.title);
+        // 🧠 Parser le titre pour extraire tome + série
+        var fullTitle = data.title;
+        if (data.subtitle) fullTitle += ' - ' + data.subtitle;
+        var parsed = parseBookTitle(fullTitle);
+
+        setFormVal(prefix + 'Title', parsed.title);
         setFormVal(prefix + 'Author', data.author);
         if (data.genre) setFormVal(prefix + 'Genre', data.genre);
+
+        if (parsed.tome) {
+            setFormVal(prefix + 'Tome', parsed.tome);
+        }
+
+        if (parsed.series) {
+            setFormVal(prefix + 'Series', parsed.series);
+        }
 
         // Scroll vers le formulaire
         var formId = prefix === 'book' ? 'addBookForm'
@@ -665,6 +812,67 @@
     }
 
     // ============================================================
+    //  PARSER LE TITRE (extraire tome + série)
+    // ============================================================
+    function parseBookTitle(fullTitle) {
+        if (!fullTitle) return { title: '', tome: null, series: null };
+
+        var title = fullTitle.trim();
+        var tome = null;
+        var series = null;
+
+        // Patterns pour détecter le tome
+        var patterns = [
+            /[,\-–—:\s]+tome\s*(\d+)/i,
+            /[,\-–—:\s]+t\.?\s*(\d+)(?!\d)/i,
+            /[,\-–—:\s]+volume\s*(\d+)/i,
+            /[,\-–—:\s]+vol\.?\s*(\d+)/i,
+            /[,\-–—:\s]+livre\s*(\d+)/i,
+            /[,\-–—:\s]+book\s*(\d+)/i,
+            /[,\-–—:\s]+#(\d+)/,
+            /[,\-–—:\s]+n[°o]\s*(\d+)/i,
+            /\(tome\s*(\d+)\)/i,
+            /\(t\.?\s*(\d+)\)/i,
+            /\(volume\s*(\d+)\)/i,
+            /\(#(\d+)\)/
+        ];
+
+        for (var i = 0; i < patterns.length; i++) {
+            var match = title.match(patterns[i]);
+            if (match) {
+                tome = parseInt(match[1]);
+                title = title.replace(patterns[i], '').trim();
+                title = title.replace(/[,\-–—:\s]+$/, '').trim();
+                title = title.replace(/^\s*[\-–—:]\s*/, '').trim();
+                break;
+            }
+        }
+
+        // Détecter la série
+        var seriesSeparators = [' - ', ' : ', ' — ', ' – '];
+        for (var s = 0; s < seriesSeparators.length; s++) {
+            var sep = seriesSeparators[s];
+            var idx = title.indexOf(sep);
+            if (idx > 0 && idx < title.length - 3) {
+                var before = title.substring(0, idx).trim();
+                var after = title.substring(idx + sep.length).trim();
+
+                if (before.length < 40 && after.length > 3) {
+                    series = before;
+                    title = after;
+                    break;
+                }
+            }
+        }
+
+        return {
+            title: title,
+            tome: tome,
+            series: series
+        };
+    }
+
+     // ============================================================
     //  PARAMÈTRES & THÈMES
     // ============================================================
     function applySettings() {
@@ -1036,7 +1244,7 @@
     function openModal(id) { var m = $(id); if (m) m.classList.add('active'); }
     function closeModal(id) { var m = $(id); if (m) m.classList.remove('active'); }
 
-     // ============================================================
+    // ============================================================
     //  BIBLIOTHÈQUE — AJOUT
     // ============================================================
     function addBook(e) {
