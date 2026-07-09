@@ -814,62 +814,110 @@
     // ============================================================
     //  PARSER LE TITRE (extraire tome + série)
     // ============================================================
+    // ============================================================
+    //  PARSER LE TITRE (extraire tome + série) — v2 améliorée
+    // ============================================================
     function parseBookTitle(fullTitle) {
         if (!fullTitle) return { title: '', tome: null, series: null };
 
-        var title = fullTitle.trim();
+        var original = fullTitle.trim();
+        var title = original;
         var tome = null;
         var series = null;
 
-        // Patterns pour détecter le tome
-        var patterns = [
-            /[,\-–—:\s]+tome\s*(\d+)/i,
-            /[,\-–—:\s]+t\.?\s*(\d+)(?!\d)/i,
-            /[,\-–—:\s]+volume\s*(\d+)/i,
-            /[,\-–—:\s]+vol\.?\s*(\d+)/i,
-            /[,\-–—:\s]+livre\s*(\d+)/i,
-            /[,\-–—:\s]+book\s*(\d+)/i,
-            /[,\-–—:\s]+#(\d+)/,
-            /[,\-–—:\s]+n[°o]\s*(\d+)/i,
-            /\(tome\s*(\d+)\)/i,
-            /\(t\.?\s*(\d+)\)/i,
-            /\(volume\s*(\d+)\)/i,
-            /\(#(\d+)\)/
+        console.log('🔍 Parsing:', original);
+
+        // ========== 1. EXTRAIRE LE TOME ==========
+        var tomePatterns = [
+            // "Tome 1", "T. 1", "T1"
+            /[\s,\-–—:]+tome\s*(\d+)/i,
+            /[\s,\-–—:]+t\.\s*(\d+)/i,
+            /[\s,\-–—:]+t\s*(\d+)(?!\d)/i,
+            // "Volume 1", "Vol. 1", "V1"
+            /[\s,\-–—:]+volume\s*(\d+)/i,
+            /[\s,\-–—:]+vol\.\s*(\d+)/i,
+            // "Livre 1", "Book 1"
+            /[\s,\-–—:]+livre\s*(\d+)/i,
+            /[\s,\-–—:]+book\s*(\d+)/i,
+            // "#1", "n°1", "n° 1"
+            /[\s,\-–—:]+#(\d+)/,
+            /[\s,\-–—:]+n[°o]\s*(\d+)/i,
+            // Entre parenthèses : "(Tome 1)", "(T1)", "(Vol. 1)"
+            /\((?:tome|t\.?|vol\.?|volume|livre|book)\s*(\d+)\)/i,
+            /\(#(\d+)\)/,
+            // Chiffres romains "Tome I", "Tome II"
+            /[\s,\-–—:]+tome\s+(I{1,3}|IV|V|VI{1,3}|IX|X)(?![a-z])/i,
+            // Format "1/7" ou "1 sur 7"
+            /[\s,\-–—:]+(\d+)\s*\/\s*\d+/,
+            /[\s,\-–—:]+(\d+)\s+sur\s+\d+/i
         ];
 
-        for (var i = 0; i < patterns.length; i++) {
-            var match = title.match(patterns[i]);
+        for (var i = 0; i < tomePatterns.length; i++) {
+            var match = title.match(tomePatterns[i]);
             if (match) {
-                tome = parseInt(match[1]);
-                title = title.replace(patterns[i], '').trim();
+                var tomeStr = match[1];
+                // Convertir chiffres romains si besoin
+                tome = romanToInt(tomeStr) || parseInt(tomeStr);
+                console.log('  ✓ Tome trouvé:', tome, '(pattern:', tomePatterns[i], ')');
+                title = title.replace(tomePatterns[i], '').trim();
                 title = title.replace(/[,\-–—:\s]+$/, '').trim();
                 title = title.replace(/^\s*[\-–—:]\s*/, '').trim();
                 break;
             }
         }
 
-        // Détecter la série
-        var seriesSeparators = [' - ', ' : ', ' — ', ' – '];
-        for (var s = 0; s < seriesSeparators.length; s++) {
-            var sep = seriesSeparators[s];
-            var idx = title.indexOf(sep);
-            if (idx > 0 && idx < title.length - 3) {
-                var before = title.substring(0, idx).trim();
-                var after = title.substring(idx + sep.length).trim();
+        // ========== 2. EXTRAIRE LA SÉRIE ==========
+        // Patterns : "Série - Titre", "Série : Titre", "Série, Titre"
+        var seriesPatterns = [
+            { sep: ' - ', regex: / - / },
+            { sep: ' – ', regex: / – / },
+            { sep: ' — ', regex: / — / },
+            { sep: ' : ', regex: / : / },
+            { sep: ': ', regex: /: / },
+            { sep: ', ', regex: /, / }
+        ];
 
-                if (before.length < 40 && after.length > 3) {
+        for (var s = 0; s < seriesPatterns.length; s++) {
+            var pat = seriesPatterns[s];
+            var idx = title.search(pat.regex);
+            if (idx > 0) {
+                var before = title.substring(0, idx).trim();
+                var after = title.substring(idx + pat.sep.length).trim();
+
+                // Conditions pour valider la série :
+                // - "before" pas trop long (< 50 chars)
+                // - "before" pas trop court (> 2 chars)
+                // - "after" a du contenu (> 2 chars)
+                if (before.length >= 3 && before.length < 50 && after.length > 2) {
                     series = before;
                     title = after;
+                    console.log('  ✓ Série trouvée:', series, '/ Titre:', title);
                     break;
                 }
             }
         }
 
+        // ========== 3. NETTOYAGE FINAL ==========
+        title = title.replace(/^\s*[\-–—:,]\s*/, '').trim();
+        title = title.replace(/[\-–—:,\s]+$/, '').trim();
+
+        console.log('  → Résultat: titre="' + title + '", tome=' + tome + ', série="' + series + '"');
+
         return {
-            title: title,
+            title: title || original,
             tome: tome,
             series: series
         };
+    }
+
+    // Convertir chiffres romains en entier
+    function romanToInt(str) {
+        var roman = {
+            'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5,
+            'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10,
+            'XI': 11, 'XII': 12, 'XIII': 13, 'XIV': 14, 'XV': 15
+        };
+        return roman[str.toUpperCase()] || null;
     }
 
      // ============================================================
