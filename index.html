@@ -65,12 +65,15 @@
         <section class="add-section" aria-label="Ajouter un livre">
             <h2>➕ Ajouter un livre</h2>
 
-            <!-- Bouton scanner code-barres -->
+            <!-- Boutons scanner code-barres -->
             <div class="scan-quick-access">
                 <button type="button" class="btn btn-scan" id="btnScanBarcode">
-                    <span aria-hidden="true">📷</span> Scanner un code-barres
+                    <span aria-hidden="true">📷</span> Scanner en direct
                 </button>
-                <span class="scan-hint-text">💡 Auto-remplit titre, auteur et genre</span>
+                <button type="button" class="btn btn-scan-photo" id="btnPhotoScan">
+                    <span aria-hidden="true">📸</span> Prendre une photo (iPhone recommandé)
+                </button>
+                <span class="scan-hint-text">💡 Auto-remplit titre, auteur, tome et genre</span>
             </div>
 
             <form id="addBookForm" novalidate>
@@ -212,12 +215,15 @@
         <section class="add-section" aria-label="Ajouter un livre externe">
             <h2>➕ Ajouter un livre externe</h2>
 
-            <!-- Bouton scanner code-barres -->
+            <!-- Boutons scanner code-barres -->
             <div class="scan-quick-access">
                 <button type="button" class="btn btn-scan" id="btnScanBarcodeExt">
-                    <span aria-hidden="true">📷</span> Scanner un code-barres
+                    <span aria-hidden="true">📷</span> Scanner en direct
                 </button>
-                <span class="scan-hint-text">💡 Auto-remplit titre, auteur et genre</span>
+                <button type="button" class="btn btn-scan-photo" id="btnPhotoScanExt">
+                    <span aria-hidden="true">📸</span> Prendre une photo (iPhone recommandé)
+                </button>
+                <span class="scan-hint-text">💡 Auto-remplit titre, auteur, tome et genre</span>
             </div>
 
             <form id="addExtForm" novalidate>
@@ -432,12 +438,15 @@
         <section class="add-section" aria-label="Ajouter à la wishlist">
             <h2>➕ Ajouter à la liste d'achats</h2>
 
-            <!-- Bouton scanner code-barres -->
+            <!-- Boutons scanner code-barres -->
             <div class="scan-quick-access">
                 <button type="button" class="btn btn-scan" id="btnScanBarcodeWish">
-                    <span aria-hidden="true">📷</span> Scanner un code-barres
+                    <span aria-hidden="true">📷</span> Scanner en direct
                 </button>
-                <span class="scan-hint-text">💡 Auto-remplit titre, auteur et genre</span>
+                <button type="button" class="btn btn-scan-photo" id="btnPhotoScanWish">
+                    <span aria-hidden="true">📸</span> Prendre une photo (iPhone recommandé)
+                </button>
+                <span class="scan-hint-text">💡 Auto-remplit titre, auteur, tome et genre</span>
             </div>
 
             <form id="addWishlistForm" novalidate>
@@ -667,9 +676,9 @@
         <section class="settings-section" aria-label="À propos">
             <h2>ℹ️ À propos</h2>
             <div class="about-card">
-                <p><strong>📚 Ma Pile à Livres</strong> — Version 11.6</p>
+                <p><strong>📚 Ma Pile à Livres</strong> — Version 11.7</p>
                 <p>Fait avec ❤️ — 2025</p>
-                <p class="about-small">Données sauvegardées localement + cloud (Firebase) — Scanner ZXing</p>
+                <p class="about-small">Données sauvegardées localement + cloud (Firebase) — Scanner photo iPhone</p>
             </div>
         </section>
     </div>
@@ -692,6 +701,9 @@
             </div>
         </div>
     </div>
+
+    <!-- 📸 Input caché pour scan photo -->
+    <input type="file" id="photoScanInput" accept="image/*" capture="environment" style="display:none">
 
     <!-- Modale notation livre biblio -->
     <div class="modal-overlay" id="ratingModal" role="dialog" aria-modal="true" aria-labelledby="ratingModalTitle">
@@ -1005,7 +1017,7 @@
 
     <!-- Footer -->
     <footer>
-        <p>📚 Ma Pile à Livres v11.6 — Fait avec ❤️ — 2025</p>
+        <p>📚 Ma Pile à Livres v11.7 — Fait avec ❤️ — 2025</p>
     </footer>
 
     <!-- ============================================================ -->
