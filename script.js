@@ -400,17 +400,32 @@
                 target: container,
                 constraints: {
                     facingMode: 'environment',
-                    width: { min: 640, ideal: 1280 },
-                    height: { min: 480, ideal: 720 }
+                    width: { min: 1280, ideal: 1920 },
+                    height: { min: 720, ideal: 1080 },
+                    aspectRatio: { min: 1, max: 2 }
+                },
+                area: {
+                    top: '25%',
+                    right: '10%',
+                    left: '10%',
+                    bottom: '25%'
                 }
             },
             locator: {
-                patchSize: 'medium',
-                halfSample: true
+                patchSize: 'large',
+                halfSample: false
             },
             numOfWorkers: navigator.hardwareConcurrency ? Math.min(navigator.hardwareConcurrency, 4) : 2,
+            frequency: 10,
             decoder: {
-                readers: ['ean_reader', 'ean_8_reader']
+                readers: [
+                    'ean_reader',
+                    'ean_8_reader',
+                    'code_128_reader',
+                    'upc_reader',
+                    'upc_e_reader'
+                ],
+                multiple: false
             },
             locate: true
         }, function (err) {
@@ -426,12 +441,37 @@
             Quagga.start();
             state.scannerActive = true;
             if (hint) {
-                hint.textContent = '🔍 Recherche du code-barres...';
+                hint.textContent = '🔍 Vise le code-barres au centre...';
                 hint.className = 'scanner-hint';
             }
         });
 
         Quagga.onDetected(handleBarcodeDetected);
+
+        // BONUS : Debug pour voir ce qui est détecté
+        Quagga.onProcessed(function (result) {
+            var drawingCtx = Quagga.canvas.ctx.overlay;
+            var drawingCanvas = Quagga.canvas.dom.overlay;
+
+            if (result) {
+                if (result.boxes) {
+                    drawingCtx.clearRect(0, 0, parseInt(drawingCanvas.getAttribute('width')), parseInt(drawingCanvas.getAttribute('height')));
+                    result.boxes.filter(function (box) {
+                        return box !== result.box;
+                    }).forEach(function (box) {
+                        Quagga.ImageDebug.drawPath(box, { x: 0, y: 1 }, drawingCtx, { color: 'green', lineWidth: 2 });
+                    });
+                }
+
+                if (result.box) {
+                    Quagga.ImageDebug.drawPath(result.box, { x: 0, y: 1 }, drawingCtx, { color: '#00F', lineWidth: 2 });
+                }
+
+                if (result.codeResult && result.codeResult.code) {
+                    Quagga.ImageDebug.drawPath(result.line, { x: 'x', y: 'y' }, drawingCtx, { color: 'red', lineWidth: 3 });
+                }
+            }
+        });
     }
 
     function stopScanner() {
