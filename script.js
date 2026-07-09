@@ -1,6 +1,6 @@
 // ============================================================
-//  MA PILE À LIVRES — SCRIPT PRINCIPAL v11.5
-//  + Scanner code-barres (Quagga2 + Google Books API)
+//  MA PILE À LIVRES — SCRIPT PRINCIPAL v11.6
+//  Scanner code-barres avec ZXing (fiable et rapide)
 // ============================================================
 
 (function () {
@@ -38,9 +38,9 @@
         periodicSyncInterval: null,
         // Scanner
         scannerActive: false,
-        scannerTarget: 'book', // 'book' | 'ext' | 'wish'
+        scannerTarget: 'book',
         lastDetectedCode: null,
-        detectionCount: {}
+        zxingReader: null
     };
 
     // ============================================================
@@ -57,7 +57,6 @@
     var SYNC_RETRY_DELAY = 5000;
     var SYNC_PERIODIC_MS = 60000;
     var DELETED_RETENTION_MS = 30 * MS_PER_DAY;
-    var SCANNER_MIN_DETECTIONS = 2;
 
     // ============================================================
     //  HELPERS
@@ -248,7 +247,6 @@
             overlays[i].addEventListener('click', function (e) {
                 if (e.target === this) {
                     this.classList.remove('active');
-                    // Si c'est le scan, on l'arrête aussi
                     if (this.id === 'scanModal') stopScanner();
                 }
             });
@@ -356,15 +354,14 @@
     }
 
     // ============================================================
-    //  📷 SCANNER DE CODE-BARRES
+    //  📷 SCANNER CODE-BARRES (ZXing)
     // ============================================================
     function openScanner(target) {
-        if (typeof Quagga === 'undefined') {
-            showToast('❌ Bibliothèque de scan non chargée. Vérifie ta connexion.');
+        if (typeof ZXing === 'undefined') {
+            showToast('❌ Bibliothèque ZXing non chargée. Vérifie ta connexion.');
             return;
         }
 
-        // Vérifier le support caméra
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             showToast('❌ Ton navigateur ne supporte pas la caméra');
             return;
@@ -372,7 +369,6 @@
 
         state.scannerTarget = target || 'book';
         state.lastDetectedCode = null;
-        state.detectionCount = {};
 
         openModal('scanModal');
         setTimeout(startScanner, 400);
@@ -393,131 +389,130 @@
             hint.className = 'scanner-hint';
         }
 
-        Quagga.init({
-            inputStream: {
-                name: 'Live',
-                type: 'LiveStream',
-                target: container,
-                constraints: {
-                    facingMode: 'environment',
-                    width: { min: 1280, ideal: 1920 },
-                    height: { min: 720, ideal: 1080 },
-                    aspectRatio: { min: 1, max: 2 }
-                },
-                area: {
-                    top: '25%',
-                    right: '10%',
-                    left: '10%',
-                    bottom: '25%'
-                }
-            },
-            locator: {
-                patchSize: 'large',
-                halfSample: false
-            },
-            numOfWorkers: navigator.hardwareConcurrency ? Math.min(navigator.hardwareConcurrency, 4) : 2,
-            frequency: 10,
-            decoder: {
-                readers: [
-                    'ean_reader',
-                    'ean_8_reader',
-                    'code_128_reader',
-                    'upc_reader',
-                    'upc_e_reader'
-                ],
-                multiple: false
-            },
-            locate: true
-        }, function (err) {
-            if (err) {
-                console.error('Scanner init error:', err);
-                if (hint) {
-                    hint.textContent = '❌ Impossible d\'accéder à la caméra. Vérifie les permissions.';
-                    hint.className = 'scanner-hint error';
-                }
-                showToast('❌ Erreur caméra : vérifie les permissions');
-                return;
-            }
-            Quagga.start();
-            state.scannerActive = true;
+        // Nettoyer et créer l'élément vidéo
+        container.innerHTML = '<video id="scanVideo" playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>';
+
+        try {
+            // Créer le lecteur ZXing avec les formats de codes-barres pour livres
+            var hints = new Map();
+            var formats = [
+                ZXing.BarcodeFormat.EAN_13,
+                ZXing.BarcodeFormat.EAN_8,
+                ZXing.BarcodeFormat.UPC_A,
+                ZXing.BarcodeFormat.UPC_E,
+                ZXing.BarcodeFormat.CODE_128
+            ];
+            hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+            hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+
+            state.zxingReader = new ZXing.BrowserMultiFormatReader(hints, 500);
+        } catch (e) {
+            console.error('ZXing init error:', e);
             if (hint) {
-                hint.textContent = '🔍 Vise le code-barres au centre...';
-                hint.className = 'scanner-hint';
+                hint.textContent = '❌ Erreur ZXing : ' + e.message;
+                hint.className = 'scanner-hint error';
             }
-        });
-
-        Quagga.onDetected(handleBarcodeDetected);
-
-        // BONUS : Debug pour voir ce qui est détecté
-        Quagga.onProcessed(function (result) {
-            var drawingCtx = Quagga.canvas.ctx.overlay;
-            var drawingCanvas = Quagga.canvas.dom.overlay;
-
-            if (result) {
-                if (result.boxes) {
-                    drawingCtx.clearRect(0, 0, parseInt(drawingCanvas.getAttribute('width')), parseInt(drawingCanvas.getAttribute('height')));
-                    result.boxes.filter(function (box) {
-                        return box !== result.box;
-                    }).forEach(function (box) {
-                        Quagga.ImageDebug.drawPath(box, { x: 0, y: 1 }, drawingCtx, { color: 'green', lineWidth: 2 });
-                    });
-                }
-
-                if (result.box) {
-                    Quagga.ImageDebug.drawPath(result.box, { x: 0, y: 1 }, drawingCtx, { color: '#00F', lineWidth: 2 });
-                }
-
-                if (result.codeResult && result.codeResult.code) {
-                    Quagga.ImageDebug.drawPath(result.line, { x: 'x', y: 'y' }, drawingCtx, { color: 'red', lineWidth: 3 });
-                }
-            }
-        });
-    }
-
-    function stopScanner() {
-        if (state.scannerActive && typeof Quagga !== 'undefined') {
-            try {
-                Quagga.offDetected(handleBarcodeDetected);
-                Quagga.stop();
-            } catch (e) {
-                console.warn('Scanner stop error:', e);
-            }
-            state.scannerActive = false;
-        }
-    }
-
-    function handleBarcodeDetected(result) {
-        if (!result || !result.codeResult) return;
-        var code = result.codeResult.code;
-
-        // Log pour debug
-        console.log('📸 Code détecté:', code, 'confiance:', result.codeResult.decodedCodes);
-
-        // Filtrer les codes non-ISBN (les livres ont 10 ou 13 chiffres)
-        if (!/^\d{10}$|^\d{13}$/.test(code)) {
-            console.log('⚠️ Code ignoré (pas un ISBN):', code);
             return;
         }
 
-        state.detectionCount[code] = (state.detectionCount[code] || 0) + 1;
+        // Lister les caméras disponibles
+        state.zxingReader.listVideoInputDevices()
+            .then(function (videoInputDevices) {
+                if (!videoInputDevices || videoInputDevices.length === 0) {
+                    if (hint) {
+                        hint.textContent = '❌ Aucune caméra trouvée';
+                        hint.className = 'scanner-hint error';
+                    }
+                    return;
+                }
 
-        if (state.detectionCount[code] < SCANNER_MIN_DETECTIONS) return;
-        if (code === state.lastDetectedCode) return;
+                // Chercher la caméra arrière (mobile)
+                var selectedDeviceId = null;
+                for (var i = 0; i < videoInputDevices.length; i++) {
+                    var label = (videoInputDevices[i].label || '').toLowerCase();
+                    if (label.indexOf('back') !== -1 ||
+                        label.indexOf('rear') !== -1 ||
+                        label.indexOf('environment') !== -1 ||
+                        label.indexOf('arrière') !== -1) {
+                        selectedDeviceId = videoInputDevices[i].deviceId;
+                        break;
+                    }
+                }
+                // Sinon prendre la dernière (souvent l'arrière sur mobile)
+                if (!selectedDeviceId) {
+                    selectedDeviceId = videoInputDevices[videoInputDevices.length - 1].deviceId;
+                }
 
-        state.lastDetectedCode = code;
-        state.detectionCount = {};
+                state.scannerActive = true;
+                if (hint) {
+                    hint.textContent = '🔍 Vise le code-barres au dos du livre...';
+                    hint.className = 'scanner-hint';
+                }
 
-        var hint = $('scannerHint');
-        if (hint) {
-            hint.textContent = '✅ Code détecté : ' + code + ' — Recherche...';
-            hint.className = 'scanner-hint success';
+                // Démarrer le scan
+                state.zxingReader.decodeFromVideoDevice(
+                    selectedDeviceId,
+                    'scanVideo',
+                    function (result, err) {
+                        if (result) {
+                            var code = result.getText();
+                            console.log('📸 ZXing détecté:', code);
+
+                            // Filtrer : uniquement ISBN (10 ou 13 chiffres)
+                            if (!/^\d{10}$|^\d{13}$/.test(code)) {
+                                console.log('⚠️ Pas un ISBN valide:', code);
+                                return;
+                            }
+
+                            // Éviter les doublons
+                            if (code === state.lastDetectedCode) return;
+                            state.lastDetectedCode = code;
+
+                            if (hint) {
+                                hint.textContent = '✅ Code détecté : ' + code + ' — Recherche...';
+                                hint.className = 'scanner-hint success';
+                            }
+
+                            // Vibration mobile
+                            if (navigator.vibrate) {
+                                try { navigator.vibrate(200); } catch (e) {}
+                            }
+
+                            // Récupérer les infos du livre
+                            fetchBookByISBN(code);
+                        }
+
+                        // Ignorer les erreurs "NotFoundException" (normales pendant le scan)
+                        if (err && !(err instanceof ZXing.NotFoundException)) {
+                            console.warn('Scan error:', err);
+                        }
+                    }
+                );
+            })
+            .catch(function (err) {
+                console.error('ZXing camera error:', err);
+                if (hint) {
+                    hint.textContent = '❌ Erreur caméra : ' + err.message;
+                    hint.className = 'scanner-hint error';
+                }
+                showToast('❌ Erreur caméra : vérifie les permissions');
+            });
+    }
+
+    function stopScanner() {
+        if (state.zxingReader) {
+            try {
+                state.zxingReader.reset();
+            } catch (e) {
+                console.warn('ZXing stop error:', e);
+            }
+            state.zxingReader = null;
         }
+        state.scannerActive = false;
 
-        if (navigator.vibrate) {
-            try { navigator.vibrate(200); } catch (e) {}
-        }
-
-        fetchBookByISBN(code);
+        // Nettoyer le container vidéo
+        var container = $('scannerContainer');
+        if (container) container.innerHTML = '';
     }
 
     function askManualISBN() {
@@ -594,7 +589,7 @@
                     showToast('⚠️ Livre non trouvé — Saisis manuellement');
                     setTimeout(function () {
                         closeScanner();
-                        var titleInput = getTargetInput('title');
+                        var titleInput = getTargetInput('Title');
                         if (titleInput) titleInput.focus();
                     }, 1500);
                 }
@@ -627,13 +622,11 @@
         return 'Roman';
     }
 
-    // Remplit le formulaire selon la cible (book, ext, wish)
     function getTargetInput(field) {
         var prefix = state.scannerTarget === 'ext' ? 'ext'
                    : state.scannerTarget === 'wish' ? 'wish'
                    : 'book';
-        var capitalize = field.charAt(0).toUpperCase() + field.slice(1);
-        return $(prefix + capitalize);
+        return $(prefix + field);
     }
 
     function fillScannedBook(data) {
@@ -1884,7 +1877,7 @@
         btn.textContent = exp ? '📚 Masquer' : '📚 Voir les livres';
     }
 
-    // ============================================================
+     // ============================================================
     //  WISHLIST
     // ============================================================
     function addWishlistItem(e) {
@@ -2679,4 +2672,4 @@
         }
     }
 
-})(); 
+})();
