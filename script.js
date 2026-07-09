@@ -57,7 +57,7 @@
     var SYNC_RETRY_DELAY = 5000;
     var SYNC_PERIODIC_MS = 60000;
     var DELETED_RETENTION_MS = 30 * MS_PER_DAY;
-    var SCANNER_MIN_DETECTIONS = 3;
+    var SCANNER_MIN_DETECTIONS = 2;
 
     // ============================================================
     //  HELPERS
@@ -490,7 +490,15 @@
         if (!result || !result.codeResult) return;
         var code = result.codeResult.code;
 
-        // Compter les détections pour fiabilité
+        // Log pour debug
+        console.log('📸 Code détecté:', code, 'confiance:', result.codeResult.decodedCodes);
+
+        // Filtrer les codes non-ISBN (les livres ont 10 ou 13 chiffres)
+        if (!/^\d{10}$|^\d{13}$/.test(code)) {
+            console.log('⚠️ Code ignoré (pas un ISBN):', code);
+            return;
+        }
+
         state.detectionCount[code] = (state.detectionCount[code] || 0) + 1;
 
         if (state.detectionCount[code] < SCANNER_MIN_DETECTIONS) return;
@@ -505,7 +513,6 @@
             hint.className = 'scanner-hint success';
         }
 
-        // Vibration mobile
         if (navigator.vibrate) {
             try { navigator.vibrate(200); } catch (e) {}
         }
