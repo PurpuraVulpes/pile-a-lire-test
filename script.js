@@ -444,6 +444,14 @@
                 }
 
                 state.scannerActive = true;
+                                state.scannerActive = true;
+
+                // 🐛 DEBUG - à retirer après
+                var debugDiv = document.createElement('div');
+                debugDiv.id = 'scanDebug';
+                debugDiv.style.cssText = 'position:fixed;bottom:10px;left:10px;right:10px;background:rgba(0,0,0,0.8);color:#0f0;padding:10px;font-size:12px;z-index:9999;max-height:150px;overflow-y:auto;font-family:monospace;';
+                debugDiv.textContent = 'DEBUG: Scanner démarré...';
+                document.body.appendChild(debugDiv);
                 if (hint) {
                     hint.textContent = '🔍 Vise le code-barres au dos du livre...';
                     hint.className = 'scanner-hint';
@@ -454,9 +462,19 @@
                     selectedDeviceId,
                     'scanVideo',
                     function (result, err) {
+                        // 🐛 DEBUG
+                        var dbg = document.getElementById('scanDebug');
+                        if (dbg) {
+                            if (result) {
+                                dbg.textContent = '✅ DÉTECTÉ: ' + result.getText();
+                            } else if (err && !(err instanceof ZXing.NotFoundException)) {
+                                dbg.textContent = '❌ ERREUR: ' + err.message;
+                            }
+                        }
+
                         if (result) {
                             var code = result.getText();
-                            console.log('📸 ZXing détecté:', code);
+                            // ... reste du code inchangé
 
                             // Filtrer : uniquement ISBN (10 ou 13 chiffres)
                             if (!/^\d{10}$|^\d{13}$/.test(code)) {
