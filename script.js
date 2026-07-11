@@ -1,6 +1,6 @@
 // ============================================================
-//  MA PILE À LIVRES — SCRIPT PRINCIPAL v11.7
-//  Scanner : Photo iPhone + Scan direct + Tap-to-focus
+//  MA PILE À LIVRES — SCRIPT PRINCIPAL v11.8
+//  Tirage aléatoire intelligent + historique sagas
 // ============================================================
 
 (function () {
@@ -14,6 +14,10 @@
     var external = loadJSON('myBookExternal', []);
     var sagasMeta = loadJSON('myBookSagasMeta', {});
     var deletedItems = loadJSON('myBookDeleted', { books: [], wishlist: [], external: [] });
+    var randomHistory = loadJSON('myBookRandomHistory', {
+        newSagas: [],
+        continueSagas: []
+    });
     var settings = loadJSON('myBookPileSettings', {
         theme: 'purple', particles: true, animations: true, font: 'Poppins'
     });
@@ -24,6 +28,7 @@
         wishlistFilter: 'all',
         sagaFilter: 'all',
         extFilter: 'all',
+        randomMode: 'all',
         ratingBookId: null,
         selectedRating: 0,
         ratingExtBookId: null,
@@ -143,6 +148,7 @@
     function saveSagasMeta() { saveJSON('myBookSagasMeta', sagasMeta); triggerAutoSync(); }
     function saveSettings() { saveJSON('myBookPileSettings', settings); }
     function saveDeleted() { saveJSON('myBookDeleted', deletedItems); }
+    function saveRandomHistory() { saveJSON('myBookRandomHistory', randomHistory); triggerAutoSync(); }
 
     // ============================================================
     //  INITIALISATION
@@ -161,7 +167,7 @@
         renderAuthors();
         renderWishlist();
         updateStats();
-        updateRandomGenreFilter();
+        updateRandomHistory();
         updateSeriesSuggestions();
         updateWishSeriesSuggestions();
     }
@@ -186,6 +192,18 @@
                 case 'sagas':    filterSagas(filter, btn); break;
                 case 'wishlist': filterWishlist(filter, btn); break;
             }
+        });
+
+        // Modes de tirage aléatoire
+        delegateClick(document.body, '.random-mode-btn[data-random-mode]', function (btn) {
+            setRandomMode(btn.getAttribute('data-random-mode'), btn);
+        });
+
+        // Suppression d'un item historique
+        delegateClick(document.body, '.rh-remove', function (btn) {
+            var listType = btn.getAttribute('data-list');
+            var id = parseInt(btn.getAttribute('data-id'));
+            removeRandomHistoryItem(listType, id);
         });
 
         // Thèmes & polices
@@ -243,7 +261,7 @@
         bindClick('btnCancelScan', closeScanner);
         bindClick('btnManualISBN', askManualISBN);
 
-        // 📸 SCANNER PAR PHOTO (iPhone recommandé)
+        // 📸 SCANNER PAR PHOTO
         bindClick('btnPhotoScan', function () { openPhotoScan('book'); });
         bindClick('btnPhotoScanExt', function () { openPhotoScan('ext'); });
         bindClick('btnPhotoScanWish', function () { openPhotoScan('wish'); });
@@ -253,7 +271,6 @@
             photoInput.addEventListener('change', function (e) {
                 var file = e.target.files[0];
                 if (file) scanFromImage(file);
-                // Reset pour pouvoir sélectionner la même photo à nouveau
                 e.target.value = '';
             });
         }
@@ -371,7 +388,7 @@
     }
 
     // ============================================================
-    //  📸 SCAN PAR PHOTO (RECOMMANDÉ iPHONE)
+    //  📸 SCAN PAR PHOTO (iPhone recommandé)
     // ============================================================
     function openPhotoScan(target) {
         state.scannerTarget = target || 'book';
@@ -478,7 +495,6 @@
             hint.className = 'scanner-hint';
         }
 
-        // Créer la vidéo avec tap-to-focus
         container.innerHTML =
             '<video id="scanVideo" playsinline muted autoplay style="width:100%;height:100%;object-fit:cover;cursor:pointer;"></video>' +
             '<div id="scanTapHint" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#fff;padding:8px 16px;border-radius:20px;font-size:12px;pointer-events:none;z-index:5;">👆 Touche pour faire la mise au point</div>';
@@ -500,7 +516,6 @@
                 state.scannerStream = stream;
                 state.scannerActive = true;
 
-                // Tap-to-focus
                 video.addEventListener('click', function (e) {
                     tapToFocus(video, stream, e);
                 });
@@ -537,7 +552,6 @@
                     advanced: [{ focusMode: 'single-shot' }]
                 }).then(function () {
                     console.log('✅ Focus déclenché');
-                    // Feedback visuel
                     var rect = video.getBoundingClientRect();
                     var x = event.clientX - rect.left;
                     var y = event.clientY - rect.top;
@@ -556,14 +570,12 @@
     }
 
     function startBarcodeDetection(video) {
-        // BarcodeDetector natif si dispo (Chrome/Edge)
         if ('BarcodeDetector' in window) {
             console.log('✅ Utilisation BarcodeDetector natif');
             startNativeDetection(video);
             return;
         }
 
-        // Sinon ZXing (iOS Safari, Firefox)
         console.log('⚠️ BarcodeDetector non dispo, utilisation ZXing');
         if (typeof ZXing === 'undefined') {
             showToast('❌ ZXing non chargé');
@@ -688,7 +700,6 @@
     //  RÉCUPÉRATION INFOS LIVRE VIA API
     // ============================================================
     function fetchBookByISBN(isbn) {
-        // Essayer Google Books en premier
         fetch('https://www.googleapis.com/books/v1/volumes?q=isbn:' + isbn)
             .then(function (res) { return res.json(); })
             .then(function (data) {
@@ -786,7 +797,6 @@
                    : state.scannerTarget === 'wish' ? 'wish'
                    : 'book';
 
-        // 🧠 Parser le titre pour extraire tome + série
         var fullTitle = data.title;
         if (data.subtitle) fullTitle += ' - ' + data.subtitle;
         var parsed = parseBookTitle(fullTitle);
@@ -803,7 +813,6 @@
             setFormVal(prefix + 'Series', parsed.series);
         }
 
-        // Scroll vers le formulaire
         var formId = prefix === 'book' ? 'addBookForm'
                    : prefix === 'ext'  ? 'addExtForm'
                    : 'addWishlistForm';
@@ -813,9 +822,6 @@
 
     // ============================================================
     //  PARSER LE TITRE (extraire tome + série)
-    // ============================================================
-    // ============================================================
-    //  PARSER LE TITRE (extraire tome + série) — v2 améliorée
     // ============================================================
     function parseBookTitle(fullTitle) {
         if (!fullTitle) return { title: '', tome: null, series: null };
@@ -827,27 +833,20 @@
 
         console.log('🔍 Parsing:', original);
 
-        // ========== 1. EXTRAIRE LE TOME ==========
+        // Patterns tome
         var tomePatterns = [
-            // "Tome 1", "T. 1", "T1"
             /[\s,\-–—:]+tome\s*(\d+)/i,
             /[\s,\-–—:]+t\.\s*(\d+)/i,
             /[\s,\-–—:]+t\s*(\d+)(?!\d)/i,
-            // "Volume 1", "Vol. 1", "V1"
             /[\s,\-–—:]+volume\s*(\d+)/i,
             /[\s,\-–—:]+vol\.\s*(\d+)/i,
-            // "Livre 1", "Book 1"
             /[\s,\-–—:]+livre\s*(\d+)/i,
             /[\s,\-–—:]+book\s*(\d+)/i,
-            // "#1", "n°1", "n° 1"
             /[\s,\-–—:]+#(\d+)/,
             /[\s,\-–—:]+n[°o]\s*(\d+)/i,
-            // Entre parenthèses : "(Tome 1)", "(T1)", "(Vol. 1)"
             /\((?:tome|t\.?|vol\.?|volume|livre|book)\s*(\d+)\)/i,
             /\(#(\d+)\)/,
-            // Chiffres romains "Tome I", "Tome II"
             /[\s,\-–—:]+tome\s+(I{1,3}|IV|V|VI{1,3}|IX|X)(?![a-z])/i,
-            // Format "1/7" ou "1 sur 7"
             /[\s,\-–—:]+(\d+)\s*\/\s*\d+/,
             /[\s,\-–—:]+(\d+)\s+sur\s+\d+/i
         ];
@@ -856,9 +855,8 @@
             var match = title.match(tomePatterns[i]);
             if (match) {
                 var tomeStr = match[1];
-                // Convertir chiffres romains si besoin
                 tome = romanToInt(tomeStr) || parseInt(tomeStr);
-                console.log('  ✓ Tome trouvé:', tome, '(pattern:', tomePatterns[i], ')');
+                console.log('  ✓ Tome trouvé:', tome);
                 title = title.replace(tomePatterns[i], '').trim();
                 title = title.replace(/[,\-–—:\s]+$/, '').trim();
                 title = title.replace(/^\s*[\-–—:]\s*/, '').trim();
@@ -866,8 +864,7 @@
             }
         }
 
-        // ========== 2. EXTRAIRE LA SÉRIE ==========
-        // Patterns : "Série - Titre", "Série : Titre", "Série, Titre"
+        // Détecter la série
         var seriesPatterns = [
             { sep: ' - ', regex: / - / },
             { sep: ' – ', regex: / – / },
@@ -884,10 +881,6 @@
                 var before = title.substring(0, idx).trim();
                 var after = title.substring(idx + pat.sep.length).trim();
 
-                // Conditions pour valider la série :
-                // - "before" pas trop long (< 50 chars)
-                // - "before" pas trop court (> 2 chars)
-                // - "after" a du contenu (> 2 chars)
                 if (before.length >= 3 && before.length < 50 && after.length > 2) {
                     series = before;
                     title = after;
@@ -897,7 +890,6 @@
             }
         }
 
-        // ========== 3. NETTOYAGE FINAL ==========
         title = title.replace(/^\s*[\-–—:,]\s*/, '').trim();
         title = title.replace(/[\-–—:,\s]+$/, '').trim();
 
@@ -910,7 +902,6 @@
         };
     }
 
-    // Convertir chiffres romains en entier
     function romanToInt(str) {
         var roman = {
             'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5,
@@ -919,8 +910,7 @@
         };
         return roman[str.toUpperCase()] || null;
     }
-
-     // ============================================================
+        // ============================================================
     //  PARAMÈTRES & THÈMES
     // ============================================================
     function applySettings() {
@@ -1007,7 +997,8 @@
     function exportData() {
         var data = {
             books: books, wishlist: wishlist, external: external,
-            sagasMeta: sagasMeta, settings: settings, deletedItems: deletedItems
+            sagasMeta: sagasMeta, settings: settings, deletedItems: deletedItems,
+            randomHistory: randomHistory
         };
         var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         var a = document.createElement('a');
@@ -1030,6 +1021,7 @@
                 if (data.external && Array.isArray(data.external)) { external = data.external; saveJSON('myBookExternal', external); }
                 if (data.sagasMeta && typeof data.sagasMeta === 'object') { sagasMeta = data.sagasMeta; saveJSON('myBookSagasMeta', sagasMeta); }
                 if (data.deletedItems && typeof data.deletedItems === 'object') { deletedItems = data.deletedItems; saveDeleted(); }
+                if (data.randomHistory && typeof data.randomHistory === 'object') { randomHistory = data.randomHistory; saveJSON('myBookRandomHistory', randomHistory); }
                 if (data.settings && typeof data.settings === 'object') {
                     settings = Object.assign({}, settings, data.settings);
                     saveSettings();
@@ -1051,10 +1043,12 @@
         if (!confirm('⚠️ Tout supprimer localement ? Le cloud restera intact tant que tu ne synchronises pas.')) return;
         books = []; wishlist = []; external = []; sagasMeta = {};
         deletedItems = { books: [], wishlist: [], external: [] };
+        randomHistory = { newSagas: [], continueSagas: [] };
         saveJSON('myBookPile', []);
         saveJSON('myBookWishlist', []);
         saveJSON('myBookExternal', []);
         saveJSON('myBookSagasMeta', {});
+        saveJSON('myBookRandomHistory', randomHistory);
         saveDeleted();
         renderAll();
         showToast('🗑️ Tout supprimé localement.');
@@ -1514,20 +1508,69 @@
     }
 
     // ============================================================
-    //  RANDOM BOOK
+    //  🎲 TIRAGE ALÉATOIRE INTELLIGENT
     // ============================================================
+    function setRandomMode(mode, btn) {
+        state.randomMode = mode;
+        var btns = document.querySelectorAll('.random-mode-btn');
+        for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+        if (btn) btn.classList.add('active');
+    }
+
     function pickRandomBook() {
-        var gf = getRawVal('randomGenreFilter');
-        var cands = books.filter(function (b) {
-            return b.status === 'toRead' && (gf === 'all' || b.genre === gf);
-        });
+        var mode = state.randomMode;
+        var cands = [];
+
+        if (mode === 'all') {
+            // Tous les livres à lire
+            cands = books.filter(function (b) { return b.status === 'toRead'; });
+        } else if (mode === 'newSaga') {
+            // Livres d'une saga jamais commencée
+            var allSeries = getAllSeries();
+            var seriesKeys = Object.keys(allSeries);
+            var notStartedSeries = seriesKeys.filter(function (k) {
+                return !allSeries[k].isStarted;
+            });
+
+            for (var i = 0; i < books.length; i++) {
+                if (books[i].status !== 'toRead') continue;
+                if (!books[i].series) continue;
+                var key = getSeriesKey(books[i].series);
+                if (notStartedSeries.indexOf(key) !== -1) {
+                    cands.push(books[i]);
+                }
+            }
+        } else if (mode === 'continueSaga') {
+            // Livres d'une saga déjà commencée mais pas terminée
+            var allSeries2 = getAllSeries();
+            var inProgressSeries = Object.keys(allSeries2).filter(function (k) {
+                return allSeries2[k].isStarted && !allSeries2[k].isCompleted;
+            });
+
+            for (var j = 0; j < books.length; j++) {
+                if (books[j].status !== 'toRead') continue;
+                if (!books[j].series) continue;
+                var key2 = getSeriesKey(books[j].series);
+                if (inProgressSeries.indexOf(key2) !== -1) {
+                    cands.push(books[j]);
+                }
+            }
+        }
 
         var rd = $('randomResult');
         var btn = $('randomBtn');
         if (!rd || !btn) return;
 
         if (!cands.length) {
-            rd.innerHTML = '<div class="random-card"><h3>😅 Aucun livre à lire !</h3></div>';
+            var msg;
+            if (mode === 'newSaga') {
+                msg = '😅 Aucune nouvelle saga à commencer ! Ajoute des sagas avec des tomes non lus.';
+            } else if (mode === 'continueSaga') {
+                msg = '😅 Aucune saga en cours à continuer !';
+            } else {
+                msg = '😅 Aucun livre à lire !';
+            }
+            rd.innerHTML = '<div class="random-card"><h3>' + msg + '</h3></div>';
             return;
         }
 
@@ -1553,24 +1596,89 @@
                 btn.disabled = false;
                 btn.textContent = '🎰 Choisir au hasard';
                 showToast('🎲 "' + ch.title + '" choisi !');
+
+                // Enregistrer dans l'historique si c'est une saga
+                if (ch.series && (mode === 'newSaga' || mode === 'continueSaga')) {
+                    addToRandomHistory(mode, ch);
+                }
             }
         }, 100);
     }
 
-    function updateRandomGenreFilter() {
-        var s = $('randomGenreFilter');
-        if (!s) return;
-        var genres = [];
-        for (var i = 0; i < books.length; i++) {
-            if (books[i].status === 'toRead' && genres.indexOf(books[i].genre) === -1) {
-                genres.push(books[i].genre);
-            }
+    function addToRandomHistory(mode, book) {
+        var listName = mode === 'newSaga' ? 'newSagas' : 'continueSagas';
+        var list = randomHistory[listName];
+
+        // Éviter doublons (même livre)
+        var exists = list.some(function (item) {
+            return item.bookId === book.id;
+        });
+        if (exists) return;
+
+        list.push({
+            id: nowTimestamp(),
+            bookId: book.id,
+            sagaName: book.series,
+            bookTitle: book.title,
+            tome: book.tome,
+            dateAdded: nowDateStr()
+        });
+
+        saveRandomHistory();
+        updateRandomHistory();
+        showToast('📌 Ajouté à l\'historique !');
+    }
+
+    function updateRandomHistory() {
+        renderRandomHistoryList('newSagas', 'randomNewSagasList');
+        renderRandomHistoryList('continueSagas', 'randomContinueSagasList');
+    }
+
+    function renderRandomHistoryList(listName, containerId) {
+        var container = $(containerId);
+        if (!container) return;
+
+        var list = randomHistory[listName] || [];
+
+        // Nettoyer les items qui ne pointent plus vers des livres existants
+        list = list.filter(function (item) {
+            return findById(books, item.bookId) !== null;
+        });
+        randomHistory[listName] = list;
+
+        if (!list.length) {
+            container.innerHTML = '<p class="random-history-empty">Aucune saga pour le moment. Utilise le tirage aléatoire !</p>';
+            return;
         }
-        var html = '<option value="all">Tous</option>';
-        for (var j = 0; j < genres.length; j++) {
-            html += '<option value="' + escapeHTML(genres[j]) + '">' + escapeHTML(genres[j]) + '</option>';
+
+        // Trier par date d'ajout descendante (plus récent en premier)
+        list.sort(function (a, b) { return b.id - a.id; });
+
+        var parts = [];
+        for (var i = 0; i < list.length; i++) {
+            var it = list[i];
+            parts.push(
+                '<div class="random-history-item">' +
+                '<div class="rh-info">' +
+                '<span class="rh-saga-name">📖 ' + escapeHTML(it.sagaName) + '</span>' +
+                '<span class="rh-book-title">' + (it.tome ? 'T' + it.tome + ' — ' : '') + escapeHTML(it.bookTitle) + '</span>' +
+                '</div>' +
+                '<span class="rh-date">' + escapeHTML(it.dateAdded) + '</span>' +
+                '<button class="rh-remove" data-list="' + listName + '" data-id="' + it.id + '" type="button" aria-label="Retirer">🗑</button>' +
+                '</div>'
+            );
         }
-        s.innerHTML = html;
+        container.innerHTML = parts.join('');
+    }
+
+    function removeRandomHistoryItem(listName, id) {
+        if (!randomHistory[listName]) return;
+        randomHistory[listName] = randomHistory[listName].filter(function (item) {
+            return item.id !== id;
+        });
+        saveRandomHistory();
+        updateRandomHistory();
+        showToast('🗑 Retiré de l\'historique');
     }
 
     // ============================================================
@@ -1829,7 +1937,7 @@
         closeModal('ratingExtModal');
     }
 
-    // ============================================================
+     // ============================================================
     //  SAGAS
     // ============================================================
     function renderSagas() {
@@ -2151,7 +2259,7 @@
         btn.textContent = exp ? '📚 Masquer' : '📚 Voir les livres';
     }
 
-     // ============================================================
+    // ============================================================
     //  WISHLIST
     // ============================================================
     function addWishlistItem(e) {
@@ -2747,6 +2855,28 @@
         return merged;
     }
 
+    // Fusionner l'historique du tirage (union des items par id)
+    function mergeRandomHistory(localHist, cloudHist) {
+        var result = { newSagas: [], continueSagas: [] };
+        var lists = ['newSagas', 'continueSagas'];
+
+        for (var l = 0; l < lists.length; l++) {
+            var name = lists[l];
+            var map = {};
+            var localList = (localHist && localHist[name]) || [];
+            var cloudList = (cloudHist && cloudHist[name]) || [];
+
+            for (var i = 0; i < localList.length; i++) map[localList[i].id] = localList[i];
+            for (var j = 0; j < cloudList.length; j++) {
+                if (!map[cloudList[j].id]) map[cloudList[j].id] = cloudList[j];
+            }
+
+            var keys = Object.keys(map);
+            for (var k = 0; k < keys.length; k++) result[name].push(map[keys[k]]);
+        }
+        return result;
+    }
+
     // ============================================================
     //  SYNC — PUSH (envoi local → cloud avec fusion)
     // ============================================================
@@ -2768,6 +2898,7 @@
                 var mergedWishlist = mergeArrays(wishlist, cloudData.wishlist || [], deletedItems.wishlist);
                 var mergedExternal = mergeArrays(external, cloudData.external || [], deletedItems.external);
                 var mergedSagas = mergeSagasMeta(sagasMeta, cloudData.sagasMeta);
+                var mergedRandomHistory = mergeRandomHistory(randomHistory, cloudData.randomHistory);
 
                 var cloudDeleted = cloudData.deletedItems || { books: [], wishlist: [], external: [] };
                 var mergedDeleted = {
@@ -2781,11 +2912,13 @@
                 external = mergedExternal;
                 sagasMeta = mergedSagas;
                 deletedItems = mergedDeleted;
+                randomHistory = mergedRandomHistory;
 
                 saveJSON('myBookPile', books);
                 saveJSON('myBookWishlist', wishlist);
                 saveJSON('myBookExternal', external);
                 saveJSON('myBookSagasMeta', sagasMeta);
+                saveJSON('myBookRandomHistory', randomHistory);
                 saveDeleted();
 
                 var data = {
@@ -2794,6 +2927,7 @@
                     external: mergedExternal,
                     sagasMeta: mergedSagas,
                     deletedItems: mergedDeleted,
+                    randomHistory: mergedRandomHistory,
                     settings: settings,
                     lastSync: nowTimestamp(),
                     device: navigator.userAgent.substring(0, 100)
@@ -2854,6 +2988,7 @@
                 wishlist = mergeArrays(wishlist, cloudData.wishlist || [], deletedItems.wishlist);
                 external = mergeArrays(external, cloudData.external || [], deletedItems.external);
                 sagasMeta = mergeSagasMeta(sagasMeta, cloudData.sagasMeta);
+                randomHistory = mergeRandomHistory(randomHistory, cloudData.randomHistory);
 
                 var cd = cloudData.deletedItems || { books: [], wishlist: [], external: [] };
                 deletedItems = {
@@ -2871,6 +3006,7 @@
                 saveJSON('myBookWishlist', wishlist);
                 saveJSON('myBookExternal', external);
                 saveJSON('myBookSagasMeta', sagasMeta);
+                saveJSON('myBookRandomHistory', randomHistory);
                 saveDeleted();
                 saveSettings();
 
