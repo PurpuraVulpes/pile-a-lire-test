@@ -142,15 +142,43 @@
             </form>
         </section>
 
+        <!-- ============================================================ -->
+        <!--  SECTION TIRAGE ALÉATOIRE (nouvelle version)                 -->
+        <!-- ============================================================ -->
         <section class="random-section" aria-label="Choix aléatoire">
             <h2>🎲 Quel livre lire ?</h2>
             <p>Laisse le hasard décider pour toi !</p>
-            <div class="random-filter">
-                <label for="randomGenreFilter">Genre :</label>
-                <select id="randomGenreFilter"><option value="all">Tous</option></select>
+
+            <div class="random-mode-selector" role="group" aria-label="Type de tirage">
+                <button class="random-mode-btn active" data-random-mode="all" type="button">
+                    🎯 Tous les livres
+                </button>
+                <button class="random-mode-btn" data-random-mode="newSaga" type="button">
+                    ✨ Nouvelle saga
+                </button>
+                <button class="random-mode-btn" data-random-mode="continueSaga" type="button">
+                    📚 Continuer une saga
+                </button>
             </div>
+
             <button class="btn btn-random" id="randomBtn" type="button">🎰 Choisir au hasard</button>
             <div class="random-result" id="randomResult" aria-live="polite"></div>
+        </section>
+
+        <!-- Historique des sagas tirées -->
+        <section class="filter-section" aria-label="Sagas via tirage aléatoire">
+            <h2>🎲 Sagas issues du tirage</h2>
+
+            <div class="random-history-grid">
+                <div class="random-history-col">
+                    <h3 class="random-history-title">✨ Nouvelles sagas commencées</h3>
+                    <div id="randomNewSagasList" class="random-history-list"></div>
+                </div>
+                <div class="random-history-col">
+                    <h3 class="random-history-title">📚 Sagas en cours (tirées)</h3>
+                    <div id="randomContinueSagasList" class="random-history-list"></div>
+                </div>
+            </div>
         </section>
 
         <section class="filter-section" aria-label="Filtres bibliothèque">
@@ -676,9 +704,9 @@
         <section class="settings-section" aria-label="À propos">
             <h2>ℹ️ À propos</h2>
             <div class="about-card">
-                <p><strong>📚 Ma Pile à Livres</strong> — Version 11.7</p>
+                <p><strong>📚 Ma Pile à Livres</strong> — Version 11.8</p>
                 <p>Fait avec ❤️ — 2025</p>
-                <p class="about-small">Données sauvegardées localement + cloud (Firebase) — Scanner photo iPhone</p>
+                <p class="about-small">Tirage aléatoire intelligent + Scanner photo + Sync multi-appareils</p>
             </div>
         </section>
     </div>
@@ -1017,7 +1045,7 @@
 
     <!-- Footer -->
     <footer>
-        <p>📚 Ma Pile à Livres v11.7 — Fait avec ❤️ — 2025</p>
+        <p>📚 Ma Pile à Livres v11.8 — Fait avec ❤️ — 2025</p>
     </footer>
 
     <!-- ============================================================ -->
